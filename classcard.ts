@@ -356,7 +356,7 @@ class ClassCard {
             await this.client.post("https://www.classcard.net/Match/save", data).then(res => { if (!res.data || res.data.result !== "ok") throw new Error("저장 실패 msg: " + res.data.msg); });
             return {
                 success: true,
-                message: `${score}점이 ${activities2[game]}에 저장되었습니다.`
+                message: `${score}점이 ${activities2[game]}게임에 저장되었습니다.`
             };
         } catch (e) {
             if (e instanceof Error) return {
