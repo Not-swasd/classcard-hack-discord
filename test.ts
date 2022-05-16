@@ -21,17 +21,18 @@ import { Writable } from "stream";
         console.log(r.message);
         if(!r.success) process.exit();
     }); //sets[0].id
-    cch.sendScore(activities["크래시"], 400).then(console.log); //게임
-    return
     while(true) {
         console.clear();
         console.log("Set info:", cch.getSetInfo());
         console.log("User info:", cch.getUserInfo());
-        console.log("작업 목록: " + Object.keys(activities).join(", "));
+        console.log("작업 목록: " + Object.keys(activities).filter(k => {
+            if(k === "매칭" && cch.getSetInfo().type === "sentence") return false;
+            if(k === "스크램블" && cch.getSetInfo().type === "word") return false;
+            return true;
+        }).join(", "));
         tilda = await question("할 작업: ");
         if (["4", "5"].includes(activities[tilda])) score = await question("설정할 게임 점수: ");
         if (activities[tilda]) {
-            console.log(Number(score))
             if([ "1", "2", "3" ].includes(activities[tilda])) await cch.sendLearnAll(learningType[tilda]).then(console.log);
             else await cch.sendScore(activities[tilda], Number(score)).then(console.log);
             await question("");
