@@ -26,14 +26,18 @@ enum activities {
     "스크램블" = "4",
     "크래시" = "5",
 };
+
+const activities2 = {
+    "1": "암기학습",
+    "2": "리콜학습",
+    "3": "스펠학습",
+    "4": "매칭",
+    "5": "크래시"
+};
 enum folder {
     "이용한 세트" = "Main",
     "만든 세트" = "make",
     "클래스" = "ClassMain"
-};
-const gameUrl = {
-    "4": "Match",
-    "5": "Crash",
 };
 class ClassCard {
     jar: CookieJar;
@@ -323,7 +327,7 @@ class ClassCard {
             // if(res.data.includes("세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.")) throw new Error(this.set.type + "세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.");
             // let url: string = "https://www.classcard.net/" + res.data.match(new RegExp(`(?<=chkCardCount2\\('\\/)${game === "5" ? "Crash" : "Match"}\\/(.*?)(?=', 'bottom_${game === "5" ? "crash" : "match"}'\\);)`))[0];
             // if (!url) throw new Error("알 수 없는 오류입니다.");
-            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${gameUrl[game]}/${this.set.id}?c=${this.set.class.id}&s=1`);
+            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${game === "4" ? "Match" : "Crash"}/${this.set.id}?c=${this.set.class.id}&s=1`);
             let tid: string = res.data.match(/(?<=var tid = ')(.*?)(?=';)/)[0];
             res.data = res.data.replace(/\r?\n/g, "");
             let ggk: any = res.data.match(/(?<=var )ggk = {(.*?)}};/)[0];
@@ -350,6 +354,10 @@ class ClassCard {
             data.append("activity", game);
 
             await this.client.post("https://www.classcard.net/Match/save", data).then(res => { if (!res.data || res.data.result !== "ok") throw new Error("저장 실패 msg: " + res.data.msg); });
+            return {
+                success: true,
+                message: `${score}점이 ${activities2[game]}에 저장되었습니다.`
+            };
         } catch (e) {
             if (e instanceof Error) return {
                 success: false,
