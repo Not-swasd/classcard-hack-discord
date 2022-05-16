@@ -31,6 +31,10 @@ enum folder {
     "만든 세트" = "make",
     "클래스" = "ClassMain"
 };
+const gameUrl = {
+    "4": "Match",
+    "5": "Crash",
+};
 class ClassCard {
     jar: CookieJar;
     client: Axios;
@@ -315,11 +319,11 @@ class ClassCard {
         try {
             if(!this.set.id) throw new Error("세트를 설정해주세요.");
             if (!["4", "5"].includes(game)) throw new Error("지원하지 않는 게임입니다.");
-            let res: AxiosResponse = await this.client.get("https://www.classcard.net/set/" + this.set.id);
-            if(res.data.includes("세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.")) throw new Error(this.set.type + "세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.");
-            let url: string = "https://www.classcard.net/" + res.data.match(new RegExp(`(?<=chkCardCount2\\('\\/)${game === "5" ? "Crash" : "Match"}\\/(.*?)(?=', 'bottom_${game === "5" ? "crash" : "match"}'\\);)`))[0];
-            if (!url) throw new Error("알 수 없는 오류입니다.");
-            res = await this.client.get(url);
+            // let res: AxiosResponse = await this.client.get("https://www.classcard.net/set/" + this.set.id);
+            // if(res.data.includes("세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.")) throw new Error(this.set.type + "세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.");
+            // let url: string = "https://www.classcard.net/" + res.data.match(new RegExp(`(?<=chkCardCount2\\('\\/)${game === "5" ? "Crash" : "Match"}\\/(.*?)(?=', 'bottom_${game === "5" ? "crash" : "match"}'\\);)`))[0];
+            // if (!url) throw new Error("알 수 없는 오류입니다.");
+            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${gameUrl[game]}/${this.set.id}?c=${this.set.class.id}&s=1`);
             let tid: string = res.data.match(/(?<=var tid = ')(.*?)(?=';)/)[0];
             res.data = res.data.replace(/\r?\n/g, "");
             let ggk: any = res.data.match(/(?<=var )ggk = {(.*?)}};/)[0];
