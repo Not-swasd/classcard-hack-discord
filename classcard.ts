@@ -234,7 +234,7 @@ class ClassCard {
 
     async getTotal(): Promise<{ success: boolean, message: string, data?: { Memorize: number, Recall: number, Spell: number }, error?: { message: string, stack: string } }> {
         try {
-            if(!this.set.id) throw new Error("세트를 설정해주세요.");
+            if (!this.set.id) throw new Error("세트를 설정해주세요.");
             let res: AxiosResponse = await this.client.get(`https://www.classcard.net/set/${this.set.id}`).catch(() => { throw new Error("세트 정보를 가져올 수 없습니다.") });
             return {
                 success: true,
@@ -259,7 +259,7 @@ class ClassCard {
 
     async sendLearnAll(type: learningType, scoreCheck: boolean = true): Promise<{ success: boolean, message: string, data?: { before: number, after: number }, error?: { message: string, stack: string } }> {
         try {
-            if(!this.set.id) throw new Error("세트를 설정해주세요.");
+            if (!this.set.id) throw new Error("세트를 설정해주세요.");
             let activity = 0;
             if (type === learningType["암기학습"]) {
                 activity = 1;
@@ -321,7 +321,7 @@ class ClassCard {
 
     async sendScore(game: activities, score: number) {
         try {
-            if(!this.set.id) throw new Error("세트를 설정해주세요.");
+            if (!this.set.id) throw new Error("세트를 설정해주세요.");
             if (!["4", "5"].includes(game)) throw new Error("지원하지 않는 게임입니다.");
             // let res: AxiosResponse = await this.client.get("https://www.classcard.net/set/" + this.set.id);
             // if(res.data.includes("세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.")) throw new Error(this.set.type + "세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.");
@@ -347,9 +347,7 @@ class ClassCard {
             let data: FormData = new FormData();
             data.append("set_idx", this.set.id);
             for (const v of ggk.a()) data.append("arr_key[]", v);
-            for (let i = 0; i < send_data.length; i++) {
-                Object.keys(send_data[i]).forEach(v => data.append(`arr_score[${i}][${v}]`, send_data[i][v]));
-            };
+            for (let i = 0; i < send_data.length; i++) Object.keys(send_data[i]).forEach(v => data.append(`arr_score[${i}][${v}]`, send_data[i][v]));
             data.append("tid", tid);
             data.append("activity", game);
 
