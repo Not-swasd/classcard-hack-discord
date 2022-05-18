@@ -58,6 +58,7 @@ class ClassCard {
         isPro: boolean,
         isTeacher: boolean
     };
+    sessionInterval: NodeJS.Timer;
     constructor() {
         this.jar = new CookieJar();
         this.client = wrapper(axios.create({ jar: this.jar, headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36" } }));
@@ -179,6 +180,7 @@ class ClassCard {
                 "pwd": "비밀번호"
             };
             if (!res || !res.data || res.data.result !== "ok") throw new Error(!res || !res.data ? "알 수 없는 오류입니다." : `${Object.keys(reasons).includes(res.data.msg) ? reasons[res.data.msg] : res.data.msg}가 잘못되었습니다.`);
+            // this.sessionInterval = setInterval(() => this.client.get("https://classcard.net/Main"), 10000);
             this.user.id = res.data.msg;
             res = await this.client.get("https://www.classcard.net/Main");
             res.data = res.data.replace(/\r?\n/g, "");
