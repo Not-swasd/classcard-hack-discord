@@ -1,8 +1,9 @@
 import axios, { Axios, AxiosResponse } from 'axios';
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
+import Websocket = require("ws");
 // import * as fs from "fs";
-const FormData = require("form-data");
+import FormData = require("form-data");
 
 enum setType {
     "word" = "1", //단어
@@ -173,7 +174,8 @@ class ClassCard {
                 "sess_key": session_key,
                 "redirect": "",
                 "login_id": id,
-                "login_pwd": password
+                "login_pwd": password,
+                "login_remember": "on"
             }));
             const reasons: { [key: string]: string } = {
                 "id": "아이디",
@@ -371,9 +373,160 @@ class ClassCard {
     };
 };
 
+class QuizBattle {
+    ws: Websocket.WebSocket;
+    battleID: number;
+    pongTimer: NodeJS.Timeout;
+    battleInfo: {
+        b_mode: number,
+        test_id: number,
+        test_time: number,
+        b_user_idx: string,
+        test_random: boolean,
+        b_name: string,
+        set_idx: number,
+        set_name: string,
+        set_type: number,
+        quest_list: {
+            test_card_idx: string,
+            front: string,
+            back: string,
+            img_path: string,
+            audio_path: string,
+            example_sentence: string,
+            q_option: string,
+            subjective_yn: string,
+            answer_option_no: string,
+            option_info: [],
+            example_front: string,
+            example_back: string,
+            example_data: string,
+            back_data: string,
+            front_quest: [],
+            back_quest: [],
+            exam_quest: []
+        }[]
+    };
+    userName: string;
+    ready: boolean;
+    joined: boolean;
+    constructor(battleID: number) {
+        this.battleID = battleID;
+    };
+
+    init() {
+        return new Promise((resolve) => {
+            let port = 800;
+            if (this.battleID > 18999 && this.battleID < 28000) {
+                port = 801;
+            } else if (this.battleID > 27999 && this.battleID < 37000) {
+                port = 802;
+            } else if (this.battleID > 36999 && this.battleID < 46000) {
+                port = 803;
+            } else if (this.battleID > 45999 && this.battleID < 55000) {
+                port = 804;
+            } else if (this.battleID > 54999 && this.battleID < 64000) {
+                port = 805;
+            } else if (this.battleID > 63999 && this.battleID < 73000) {
+                port = 806;
+            } else if (this.battleID > 72999 && this.battleID < 82000) {
+                port = 807;
+            } else if (this.battleID > 81999 && this.battleID < 91000) {
+                port = 808;
+            } else if (this.battleID > 90999 && this.battleID < 100000) {
+                port = 809;
+            };
+            this.ws = new Websocket("wss://mobile3.classcard.net/wss_" + port);
+            this.ws.on("message", (m) => this.onMessage(m)); // 일부러 () => 한거임. onMessage에서 this가 Websocket의 this로 인식 됨.
+            this.ws.on("open", async () => {
+                this.sendPong();
+                this.sendMessage({
+                    battle_id: this.battleID,
+                    cmd: "b_check",
+                    is_auto: false,
+                    major_ver: 8,
+                    minor_ver: 0
+                });
+                while (!this.ready) await sleep(500);
+                resolve(true);
+            });
+        });
+    };
+
+    sendMessage(message: string | Object): void {
+        this.ws.send(typeof message === "object" ? JSON.stringify(message) : message);
+        this.sendPong();
+    };
+
+    sendPong(): void {
+        if (this.pongTimer) clearTimeout(this.pongTimer);
+        this.pongTimer = setTimeout(() => this.sendMessage({ cmd: 'pong' }), 10000);
+    };
+
+    async join(name: string) {
+        this.userName = name;
+        this.sendMessage({
+            cmd: "b_join",
+            battle_id: this.battleID,
+            browser: "Chrome",
+            is_add: 0,
+            is_auto: false,
+            major_ver: 8,
+            minor_ver: 0,
+            platform: "Windows 10",
+            user_name: this.userName,
+        });
+        while (!this.joined) await sleep(500);
+        return true;
+    };
+
+    async onMessage(message: Websocket.RawData) {
+        let data: any = JSON.parse(message.toString());
+        if (data.cmd === "b_check") {
+            if (data.result == "fail") {
+                this.ws.close();
+                throw new Error(data.reason || "알 수 없는 오류입니다.");
+            } else {
+                this.ready = true;
+            };
+        };
+        if (data.cmd === "b_join" && data.result === "ok") {
+            this.battleInfo = {
+                b_mode: data.b_mode,
+                test_id: data.test_id,
+                test_time: data.test_time,
+                b_user_idx: data.b_user_idx,
+                test_random: data.test_random,
+                b_name: data.b_name,
+                set_idx: data.set_idx,
+                set_name: data.set_name,
+                set_type: data.set_type,
+                quest_list: []
+            };
+            await axios.post("https://b.classcard.net/ClassBattle/battle_quest", "test_id=" + this.battleInfo.test_id).then(res => this.battleInfo.quest_list = res.data.quest_list);
+            this.sendMessage({
+                cmd: "b_join",
+                battle_id: this.battleID,
+                browser: "Chrome",
+                is_add: 1,
+                is_auto: false,
+                major_ver: 8,
+                minor_ver: 0,
+                platform: "Windows 10",
+                user_name: this.userName,
+            });
+        };
+        if (data.cmd === "b_team") this.joined = true;
+    };
+};
+
 function transformRequest(jsonData: Object = {}) {
     return Object.entries(jsonData).map(x => `${encodeURIComponent(x[0])}=${encodeURIComponent(x[1])}`).join('&');
 };
 
-export { ClassCard, learningType, folder, activities };
+function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+};
+
+export { ClassCard, QuizBattle, learningType, folder, activities };
 export default ClassCard;
