@@ -6,13 +6,13 @@ import Websocket = require("ws");
 import FormData = require("form-data");
 
 enum setType {
-    "word" = "1", //단어
-    "term" = "2", //용어
-    "quest" = "4", //문제
-    "sentence" = "5", //문장
-    "drill" = "6", //드릴
-    "listen" = "7", //듣기
-    "answer" = "8" //정답
+    "word" = 1, //단어
+    "term", //용어
+    "quest" = 4, //문제
+    "sentence", //문장
+    "drill", //드릴
+    "listen", //듣기
+    "answer" //정답
 }
 enum learningType {
     "암기학습" = "Memorize",
@@ -20,25 +20,25 @@ enum learningType {
     "스펠학습" = "Spell"
 };
 enum activities {
-    "암기학습" = "1",
-    "리콜학습" = "2",
-    "스펠학습" = "3",
-    "매칭" = "4",
-    "스크램블" = "4",
-    "크래시" = "5",
+    "암기학습" = 1,
+    "리콜학습",
+    "스펠학습",
+    "매칭" = 4,
+    "스크램블" = 4,
+    "크래시",
 };
 
-const activities2 = {
-    "1": "암기학습",
-    "2": "리콜학습",
-    "3": "스펠학습",
-    "4": "매칭",
-    "5": "크래시"
+const activities2: { [key: number]: string } = {
+    1: "암기학습",
+    2: "리콜학습",
+    3: "스펠학습",
+    4: "매칭",
+    5: "크래시"
 };
-enum folder {
-    "이용한 세트" = "Main",
-    "만든 세트" = "make",
-    "클래스" = "ClassMain"
+const folder: { [key: string]: string } = {
+    "이용한 세트": "Main",
+    "만든 세트": "make",
+    "클래스": "ClassMain"
 };
 class ClassCard {
     jar: CookieJar;
@@ -47,7 +47,7 @@ class ClassCard {
         id: string,
         name: string,
         type: string,
-        study_data: { card_idx: string }[],
+        study_data: { "card_idx": string }[],
         class: {
             id: string,
             name: string
@@ -59,7 +59,7 @@ class ClassCard {
         isPro: boolean,
         isTeacher: boolean
     };
-    sessionInterval: NodeJS.Timer;
+    sessionInterval!: NodeJS.Timer;
     constructor() {
         this.jar = new CookieJar();
         this.client = wrapper(axios.create({ jar: this.jar, headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36" } }));
@@ -97,7 +97,7 @@ class ClassCard {
         return this.user;
     };
 
-    async setSetInfo(setId: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string, study_data: { card_idx: string }[], class: { id: string, name: string } }, error?: { message: string, stack: string } }> {
+    async setSetInfo(setId: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string, study_data: { card_idx: string }[], class: { id: string, name: string } }, error?: { message: string, stack: string | undefined } } | null> {
         try {
             let res: AxiosResponse = await this.client.get("https://www.classcard.net/set/" + setId).catch(() => { throw new Error("세트 정보를 가져올 수 없습니다.") });
             if (!res.data || res.data.includes("삭제된 세트") || res.data.includes("이 세트는 제작자가 비공개로 지정한 세트입니다")) throw new Error("세트 정보를 가져올 수 없습니다.");
@@ -105,8 +105,10 @@ class ClassCard {
             this.set.id = setId;
             this.set.name = res.data.match(/(?<=set-name-header">)(.*?)(?=<!-- <span)/)[0].trim();
             this.set.type = res.data.match(/(?<=set-icon revers )(.*?)(?=")/)[0];
-            this.set.study_data = JSON.parse(res.data.match(/(?<=var study_data = )\[{(.*?)}\](?=;)/)[0]);
-            this.set.study_data.forEach(x => Object.keys(x).forEach(key => key !== "card_idx" && delete x[key]));
+            console.log(this.set.type)
+            let study_data: any = JSON.parse(res.data.match(/(?<=var study_data = )\[{(.*?)}\](?=;)/)[0]);
+            study_data.forEach((x: any) => Object.keys(x).forEach((key: any) => key !== "card_idx" && delete x[key]));
+            this.set.study_data = study_data;
             this.set.class.id = res.data.match(/(?<=var class_idx = )(.*?)(?=;)/)[0];
             this.set.class.name = res.data.match(/(?<=var class_name = ')(.*?)(?=';)/)[0];
             return { success: true, message: "세트 정보가 설정되었습니다.", data: this.set };
@@ -120,9 +122,10 @@ class ClassCard {
                 }
             };
         };
+        return null;
     };
 
-    async getSets(f: folder, classID?: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string }[], error?: { message: string, stack: string } }> {
+    async getSets(f: string, classID?: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string }[], error?: { message: string, stack: string | undefined } } | null> {
         try {
             if (f === "ClassMain" && !classID) f = folder["이용한 세트"];
             let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${f}/${f === "ClassMain" ? classID : ""}`).catch(() => { throw new Error("세트 목록을 가져올 수 없습니다.") });
@@ -142,9 +145,10 @@ class ClassCard {
                 }
             };
         };
+        return null;
     };
 
-    async getClasses(): Promise<{ success: boolean, message: string, data?: { id: string, name: string }[], error?: { message: string, stack: string } }> {
+    async getClasses(): Promise<{ success: boolean, message: string, data?: { id: string, name: string }[], error?: { message: string, stack: string | undefined } } | null> {
         try {
             let res: AxiosResponse = await this.client.get("https://www.classcard.net/Main").catch(() => { throw new Error("클래스 목록을 가져올 수 없습니다.") });
             let classes = (res.data.replace(/\r?\n/g, "").match(/(?<=<a class="left-class-items)(.*?)(?=<\/div><\/div><\/a>)/g) || []).map((htmlset: string) => { return { "name": htmlset.split('<div class="cc-ellipsis l1">')[1], "id": htmlset.match(/(?<=href="\/ClassMain\/)(.*?)(?=" >)/)![0] } });
@@ -163,13 +167,13 @@ class ClassCard {
                 }
             };
         };
-
+        return null;
     };
 
     async login(id: string, password: string) {
         try {
             await this.client.get("https://www.classcard.net");
-            let session_key = await this.getCookieValue("ci_session");
+            let session_key: string = await this.getCookieValue("ci_session");
             let res: AxiosResponse = await this.client.post("https://www.classcard.net/LoginProc", transformRequest({
                 "sess_key": session_key,
                 "redirect": "",
@@ -192,7 +196,7 @@ class ClassCard {
                 this.user.isTeacher = nt.split('<span class="font-12">')[1].includes("선생님");
                 this.user.name = nt.split('<span class="font-12">')[0].trim();
             };
-            await this.getFolders(res.data).then(f => f.success && Object.keys(f.data).forEach(key => folder[key] = f.data[key]));
+            await this.getFolders(res.data).then(f => f?.success && f.data && Object.keys(f.data!).forEach(key => folder[key] = f.data[key]));
             return {
                 success: true,
                 message: "로그인 성공",
@@ -213,8 +217,8 @@ class ClassCard {
     async getFolders(data?: string) {
         try {
             if (!data) data = await this.client.get("https://www.classcard.net/Main").then(res => res.data.replace(/\r?\n/g, ""));
-            let folders = {};
-            data.match(/<div class="m-t-sm left-sl-list".*<\/div><\/div><\/a>\s*<\/div>/)[0].split("</a>").forEach((i: string) => {
+            let folders: { [key: string]: string } = {};
+            data?.match(/<div class="m-t-sm left-sl-list".*<\/div><\/div><\/a>\s*<\/div>/)![0].split("</a>").forEach((i: string) => {
                 let folderName = (i.match(/(?<="left-sl-item">)(.*?)(?=<\/div>)/) || [""])[0].trim();
                 let href = (i.match(/(?<=href="\/)(.*?)(?=">)/) || [""])[0].trim();
                 if (!!folderName && !!href) folders[folderName] = href;
@@ -236,7 +240,7 @@ class ClassCard {
         };
     };
 
-    async getTotal(): Promise<{ success: boolean, message: string, data?: { Memorize: number, Recall: number, Spell: number }, error?: { message: string, stack: string } }> {
+    async getTotal(): Promise<{ success: boolean, message: string, data?: { Memorize: number, Recall: number, Spell: number }, error?: { message: string, stack: string | undefined } } | null> {
         try {
             if (!this.set.id) throw new Error("세트를 설정해주세요.");
             let res: AxiosResponse = await this.client.get(`https://www.classcard.net/set/${this.set.id}`).catch(() => { throw new Error("세트 정보를 가져올 수 없습니다.") });
@@ -259,9 +263,10 @@ class ClassCard {
                 }
             };
         };
+        return null;
     };
 
-    async sendLearnAll(type: learningType, scoreCheck: boolean = true): Promise<{ success: boolean, message: string, data?: { before: number, after: number }, error?: { message: string, stack: string } }> {
+    async sendLearnAll(type: learningType, scoreCheck: boolean = true): Promise<{ success: boolean, message: string, data?: { before: number, after: number }, error?: { message: string, stack: string | undefined } } | null> {
         try {
             if (!this.set.id) throw new Error("세트를 설정해주세요.");
             let activity = 0;
@@ -292,7 +297,7 @@ class ClassCard {
             let before: number;
             let after: number;
             while (true) {
-                before = scoreCheck && await this.getTotal().then(t => t.data[type]);
+                before = scoreCheck ? await this.getTotal().then(t => t!.data![type]) : 0;
                 // await this.client.post("https://www.classcard.net/ViewSetAsync/learnAll", data);
                 await this.client.post("https://www.classcard.net/ViewSetAsync/resetAllLog", transformRequest({
                     set_idx: this.set.id,
@@ -300,7 +305,7 @@ class ClassCard {
                     user_idx: this.user.id,
                     view_cnt: this.set.study_data.length,
                 }));
-                after = scoreCheck && await this.getTotal().then(t => t.data[type]);
+                after = scoreCheck ? await this.getTotal().then(t => t!.data![type]) : 0;
                 if (!scoreCheck || (after >= (Number(before.toString().slice(0, -2) + "00") + 100))) break;
             };
             return {
@@ -321,26 +326,27 @@ class ClassCard {
                 }
             };
         };
+        return null;
     };
 
     async sendScore(game: activities, score: number) {
         try {
             if (!this.set.id) throw new Error("세트를 설정해주세요.");
-            if (!["4", "5"].includes(game)) throw new Error("지원하지 않는 게임입니다.");
+            if (![4, 5].includes(game)) throw new Error("지원하지 않는 게임입니다.");
             // let res: AxiosResponse = await this.client.get("https://www.classcard.net/set/" + this.set.id);
             // if(res.data.includes("세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.")) throw new Error(this.set.type + "세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.");
             // let url: string = "https://www.classcard.net/" + res.data.match(new RegExp(`(?<=chkCardCount2\\('\\/)${game === "5" ? "Crash" : "Match"}\\/(.*?)(?=', 'bottom_${game === "5" ? "crash" : "match"}'\\);)`))[0];
             // if (!url) throw new Error("알 수 없는 오류입니다.");
-            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${game === "4" ? "Match" : "Crash"}/${this.set.id}?c=${this.set.class.id}&s=1`);
+            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${game === 4 ? "Match" : "Crash"}/${this.set.id}?c=${this.set.class.id}&s=1`);
             let tid: string = res.data.match(/(?<=var tid = ')(.*?)(?=';)/)[0];
             res.data = res.data.replace(/\r?\n/g, "");
             let ggk: any = res.data.match(/(?<=var )ggk = {(.*?)}};/)[0];
             if (!tid || !ggk) throw new Error("GGK, TID를 찾을 수 없습니다.");
             eval(ggk);
             let send_data: any[] = [];
-            if (game === "4" && this.set.type === setType["word"]) send_data.push(ggk.d(100, 0));
-            else if (game === "4" && this.set.type === setType["sentence"]) for (let i = 0; i < 20; i++) send_data.push(ggk.d(50, 0));
-            for (var i = 0; i < score / (game === "4" ? 100 : 10); i++) send_data.push(ggk.d(game === "4" ? 100 : 10, 1));
+            if (game === 4 && this.set.type === "word") send_data.push(ggk.d(100, 0));
+            else if (game === 4 && this.set.type === "sentence") for (let i = 0; i < 20; i++) send_data.push(ggk.d(50, 0));
+            for (var i = 0; i < score / (game === 4 ? 100 : 10); i++) send_data.push(ggk.d(game === 4 ? 100 : 10, 1));
             // let data = {
             //     set_idx: this.set.id,
             //     // arr_key: ggk.a(),
@@ -374,10 +380,10 @@ class ClassCard {
 };
 
 class QuizBattle {
-    ws: Websocket.WebSocket;
+    ws!: Websocket.WebSocket;
     battleID: number;
-    pongTimer: NodeJS.Timeout;
-    battleInfo: {
+    pongTimer!: NodeJS.Timeout;
+    battleInfo!: {
         b_mode: number,
         test_id: number,
         test_time: number,
@@ -407,9 +413,9 @@ class QuizBattle {
             exam_quest: []
         }[]
     };
-    userName: string;
-    ready: boolean;
-    joined: boolean;
+    userName!: string;
+    ready!: boolean;
+    joined!: boolean;
     constructor(battleID: number) {
         this.battleID = battleID;
     };

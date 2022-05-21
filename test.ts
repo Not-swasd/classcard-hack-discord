@@ -1,40 +1,46 @@
 import * as readline from 'readline';
-import ClassCard, { learningType, folder, activities } from "./classcard";
+import ClassCard, { learningType, activities } from "./classcard";
 import { Writable } from "stream";
+
 
 (async function () {
     let id: string = await question("아이디: ");
     let password: string = await question("비밀번호: ", true);
     let setId: string = await question("세트 아이디: ");
-    let tilda: string;
-    let score: string;
+    let tilda: "암기학습" | "리콜학습" | "스펠학습" | "매칭" | "스크램블" | "크래시";
+    let score: number;
     console.clear();
     let cch = new ClassCard();
     let loginResult = await cch.login(id, password);
-    console.info(loginResult.message);
-    if (!loginResult.success) return;
+    console.info(loginResult?.message);
+    if (!loginResult?.success) return;
     // const classes = await cch.getClasses().then(c => c.data);
     // console.log("Classes:", classes);
-    // const sets = await cch.getSets(folder["이용한 세트"]).then(c => c.data);
+    // let folder = await cch.getFolders().then(r => r?.data!);
+    // console.log(folder)
+    // const sets = await cch.getSets(folder["이용한 세트"]).then(c => c?.data);
     // console.log("Sets:", sets);
     await cch.setSetInfo(setId).then(r => {
-        console.log(r.message);
-        if (!r.success) process.exit();
+        console.log(r?.message);
+        if (!r?.success) process.exit();
     }); //sets[0].id
     while (true) {
         console.clear();
         console.log("Set info:", cch.getSetInfo());
         console.log("User info:", cch.getUserInfo());
         console.log("작업 목록: " + Object.keys(activities).filter(k => {
+            if (k.length <= 1) return false;
             if (k === "매칭" && cch.getSetInfo().type === "sentence") return false;
             if (k === "스크램블" && cch.getSetInfo().type === "word") return false;
             return true;
         }).join(", "));
-        tilda = await question("할 작업: ");
-        if (["4", "5"].includes(activities[tilda])) score = await question("설정할 게임 점수: ");
+        tilda = (await question("할 작업: ")) as "암기학습" | "리콜학습" | "스펠학습" | "매칭" | "스크램블" | "크래시";
         if (activities[tilda]) {
-            if (["1", "2", "3"].includes(activities[tilda])) await cch.sendLearnAll(learningType[tilda]).then(console.log);
-            else await cch.sendScore(activities[tilda], Number(score)).then(console.log);
+            if (tilda === "암기학습" || tilda === "리콜학습" || tilda === "스펠학습") await cch.sendLearnAll(learningType[tilda]).then(console.log);
+            else {
+                score = Number(await question("설정할 게임 점수: "));
+                score && await cch.sendScore(activities[tilda], score).then(console.log);
+            };
             await question("");
         };
     };
