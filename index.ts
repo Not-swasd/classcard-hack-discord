@@ -5,7 +5,7 @@ if (!fs.existsSync("./config.json")) {
     fs.writeFileSync("./config.json", JSON.stringify({ token: "", owners: [], prefix: "!", ticketCategory: "", ticketChannel: "" }, null, 4));
     process.exit(0);
 };
-if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "[]");
+if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
 let config: {
     token: string,
     owners: string[],
@@ -65,6 +65,7 @@ client.on("interactionCreate", async (interaction) => {
             fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
             await channel.permissionOverwrites.create(interaction.user, { "VIEW_CHANNEL": true, "SEND_MESSAGES": true })
             await channel.send({
+                "content": `<@${interaction.user.id}>`,
                 "embeds": [new MessageEmbed().setTitle("원하는 메뉴를 선택해주세요.").setColor("GREEN")],
                 "components": [
                     {
@@ -140,16 +141,62 @@ client.on("interactionCreate", async (interaction) => {
                                 "custom_id": "get_sets"
                             }
                         ]
+                    },
+                    {
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 2,
+                                "label": "채널 삭제하기",
+                                "style": 4,
+                                "custom_id": "delete_channel"
+                            }
+                        ]
                     }
                 ]
             });
-            return interaction.reply({
-                "embeds": [new MessageEmbed().setTitle("✅ Success").setDescription(`설정이 완료되었습니다. 채널: <#${channel.id}>`)],
+            interaction.reply({
+                "embeds": [new MessageEmbed().setTitle("✅ Success").setDescription(`설정이 완료되었습니다. 채널: <#${channel.id}>`).setColor("GREEN")],
                 "ephemeral": true
             });
+            return;
         };
         if (!channel.topic.split("|")[1].includes(interaction.user.id)) return interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("티켓을 만든 유저만 사용할 수 있습니다.").setColor("RED")], ephemeral: true });
-        if (interaction.customId.startsWith("s_") && !user.setID) return interaction.reply({ embeds: [new MessageEmbed().setTitle("세트를 설정한 뒤 사용해주세요.").setColor("RED")], ephemeral: true });
+        if (interaction.customId.startsWith("s_") && !user.setID) return interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("세트를 설정한 뒤 사용해주세요.").setColor("RED")], ephemeral: true });
+        if (interaction.customId === "delete_channel") {
+            let message: Message = await interaction.reply({
+                embeds: [new MessageEmbed().setTitle("⚠️ Warning").setDescription("정말 채널을 삭제하시겠습니까?").setColor("RED")], ephemeral: true, components: [
+                    {
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 2,
+                                "label": "네",
+                                "style": 4,
+                                "custom_id": "yes"
+                            },
+                            {
+                                "type": 2,
+                                "label": "아니요",
+                                "style": 1,
+                                "custom_id": "no"
+                            }
+                        ]
+                    }
+                ], fetchReply: true
+            }) as Message;
+            await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: "BUTTON" }).then(async (inter) => {
+                if (inter.customId === "yes") {
+                    await channel.delete();
+                    user.channelID = "";
+                    fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+                } else interaction.editReply({
+                    embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("취소되었습니다.").setColor("GREEN")],
+                    components: []
+                });
+            }).catch(() => false);
+            return;
+        };
     };
 });
 
