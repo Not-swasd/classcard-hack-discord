@@ -1,6 +1,8 @@
-import { CategoryChannel, Client, Intents, Message, MessageEmbed, MessageComponent, Channel, TextChannel } from "discord.js";
+import { CategoryChannel, Client, Intents, Message, MessageEmbed, MessageComponent, Channel, TextChannel, ModalSubmitInteraction } from "discord.js";
 import ClassCard from "./classcard";
 import * as fs from "fs";
+import * as crypto from "crypto";
+
 if (!fs.existsSync("./config.json")) {
     fs.writeFileSync("./config.json", JSON.stringify({ token: "", owners: [], prefix: "!", ticketCategory: "", ticketChannel: "" }, null, 4));
     process.exit(0);
@@ -8,6 +10,7 @@ if (!fs.existsSync("./config.json")) {
 if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
 let config: {
     token: string,
+    encKey: string,
     owners: string[],
     prefix: string,
     ticketCategory: string,
@@ -136,7 +139,7 @@ client.on("interactionCreate", async (interaction) => {
                         "components": [
                             {
                                 "type": 2,
-                                "label": "세트 가져오기",
+                                "label": "세트 목록 가져오기",
                                 "style": 3,
                                 "custom_id": "get_sets"
                             }
@@ -165,7 +168,7 @@ client.on("interactionCreate", async (interaction) => {
         if (interaction.customId.startsWith("s_") && !user.setID) return interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("세트를 설정한 뒤 사용해주세요.").setColor("RED")], ephemeral: true });
         if (interaction.customId === "delete_channel") {
             let message: Message = await interaction.reply({
-                embeds: [new MessageEmbed().setTitle("⚠️ Warning").setDescription("정말 채널을 삭제하시겠습니까?").setColor("RED")], ephemeral: true, components: [
+                embeds: [new MessageEmbed().setTitle("⚠️ Warning").setDescription("정말 채널을 삭제하시겠습니까?").setColor("YELLOW")], ephemeral: true, components: [
                     {
                         "type": 1,
                         "components": [
@@ -196,6 +199,53 @@ client.on("interactionCreate", async (interaction) => {
                 });
             }).catch(() => false);
             return;
+        };
+        if (interaction.customId === "set_id_pass") {
+            interaction.showModal({
+                "title": "아이디와 비밀번호를 입력해주세요.",
+                "customId": "id_pass_modal",
+                "components": [{
+                    "type": 1,
+                    "components": [{
+                        "type": 4,
+                        "custom_id": "id",
+                        "label": "아이디",
+                        "style": 1,
+                        "min_length": 5,
+                        "max_length": 20,
+                        "placeholder": "아이디",
+                        "required": true
+                    }]
+                },
+                {
+                    "type": 1,
+                    "components": [{
+                        "type": 4,
+                        "custom_id": "password",
+                        "label": "비밀번호",
+                        "style": 1,
+                        "min_length": 5,
+                        "max_length": 4000,
+                        "placeholder": "비밀번호",
+                        "required": true
+                    }]
+                }],
+            });
+        };
+    } else if (interaction.isModalSubmit()) {
+        if (interaction.customId === "id_pass_modal") {
+            const id = interaction.fields.getTextInputValue("id");
+            const password = interaction.fields.getTextInputValue("password");
+            let cc = new ClassCard();
+            let loginResult = await cc.login(id, password);
+            if (loginResult?.success) {
+                user.id = id;
+                user.password = encrypt(password);
+                fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+                interaction.reply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("로그인 성공. 아이디와 비밀번호가 저장되었습니다.").setColor("GREEN")], ephemeral: true });
+            } else {
+                interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(loginResult?.message || "알 수 없는 오류입니다.").setColor("RED")], ephemeral: true });
+            };
         };
     };
 });
@@ -243,3 +293,15 @@ client.on("messageCreate", async (message: Message) => {
 });
 
 client.login(config.token);
+
+function encrypt(text: string) {
+    let iv = crypto.randomBytes(8).toString("hex");
+    const cipher = crypto.createCipheriv('aes-256-cbc', config.encKey, iv);
+    return cipher.update(text, 'utf8', 'hex') + cipher.final('hex') + "'" + iv;
+};
+
+function decrypt(text: string) {
+    let text2: string[] = text.split("'");
+    const decipher = crypto.createDecipheriv('aes-256-cbc', config.encKey, text2.pop()!);
+    return decipher.update(text2[0], 'hex', 'utf8') + decipher.final('utf8');
+};
