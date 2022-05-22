@@ -14,8 +14,8 @@ import { Writable } from "stream";
     let loginResult = await cch.login(id, password);
     console.info(loginResult?.message);
     if (!loginResult?.success) return;
-    // const classes = await cch.getClasses().then(c => c.data);
-    // console.log("Classes:", classes);
+    const classes = await cch.getClasses().then(c => c?.data);
+    console.log("Classes:", classes);
     // let folder = await cch.getFolders().then(r => r?.data!);
     // console.log(folder)
     // const sets = await cch.getSets(folder["이용한 세트"]).then(c => c?.data);

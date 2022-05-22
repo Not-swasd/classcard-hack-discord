@@ -105,7 +105,6 @@ class ClassCard {
             this.set.id = setId;
             this.set.name = res.data.match(/(?<=set-name-header">)(.*?)(?=<!-- <span)/)[0].trim();
             this.set.type = res.data.match(/(?<=set-icon revers )(.*?)(?=")/)[0];
-            console.log(this.set.type)
             let study_data: any = JSON.parse(res.data.match(/(?<=var study_data = )\[{(.*?)}\](?=;)/)[0]);
             study_data.forEach((x: any) => Object.keys(x).forEach((key: any) => key !== "card_idx" && delete x[key]));
             this.set.study_data = study_data;
@@ -127,8 +126,8 @@ class ClassCard {
 
     async getSets(f: string, classID?: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string }[], error?: { message: string, stack: string | undefined } } | null> {
         try {
-            if (f === "ClassMain" && !classID) f = folder["이용한 세트"];
-            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${f}/${f === "ClassMain" ? classID : ""}`).catch(() => { throw new Error("세트 목록을 가져올 수 없습니다.") });
+            if (f === "클래스" && !classID) f = "이용한 세트";
+            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${folder[f]}/${f === "클래스" ? classID : ""}`).catch(() => { throw new Error("세트 목록을 가져올 수 없습니다.") });
             let sets = (res.data.replace(/\r?\n/g, "").match(/(?<=<div class="set-items )(.*?)(?=(<\/a>|<\/span>)<span class="text-gray font-14 font-normal)/g) || []).map((htmlset: string) => { return { "name": htmlset.split('span class="set-name-copy-text">')[1], "id": htmlset.match(/(?<=data-idx=")([0-9]*?)(?=")/)![0], "type": htmlset.match(/(?<=data-type=")([0-9]*?)(?=")/)![0] } });
             return {
                 success: true,
@@ -189,9 +188,8 @@ class ClassCard {
             // this.sessionInterval = setInterval(() => this.client.get("https://classcard.net/Main"), 10000);
             this.user.id = res.data.msg;
             res = await this.client.get("https://www.classcard.net/Main");
-            res.data = res.data.replace(/\r?\n/g, "");
-            this.user.isPro = !res.data.match(/(?<=<span class="label label-)(.*?)(?=<\/span>)/)[0].includes("STANDARD");
-            let nt = res.data.match(/(?<=<br><span class="font-bold">)(.*?)(?=<\/span>)/)[0];
+            this.user.isPro = !res.data.replace(/\r?\n/g, "").match(/(?<=<span class="label label-)(.*?)(?=<\/span>)/)[0].includes("STANDARD");
+            let nt = res.data.replace(/\r?\n/g, "").match(/(?<=<br><span class="font-bold">)(.*?)(?=<\/span>)/)[0];
             if (nt) {
                 this.user.isTeacher = nt.split('<span class="font-12">')[1].includes("선생님");
                 this.user.name = nt.split('<span class="font-12">')[0].trim();
@@ -216,9 +214,10 @@ class ClassCard {
 
     async getFolders(data?: string) {
         try {
-            if (!data) data = await this.client.get("https://www.classcard.net/Main").then(res => res.data.replace(/\r?\n/g, ""));
+            if (!data) data = await this.client.get("https://www.classcard.net/Main").then(res => res.data);
+            data = data?.split('<div class="m-t-sm left-sl-list">')[1].split(".go-auth-school-link")[0].replace(/\r?\n/g, "");
             let folders: { [key: string]: string } = {};
-            data?.match(/<div class="m-t-sm left-sl-list".*<\/div><\/div><\/a>\s*<\/div>/)![0].split("</a>").forEach((i: string) => {
+            data?.split("</a>").forEach((i: string) => {
                 let folderName = (i.match(/(?<="left-sl-item">)(.*?)(?=<\/div>)/) || [""])[0].trim();
                 let href = (i.match(/(?<=href="\/)(.*?)(?=">)/) || [""])[0].trim();
                 if (!!folderName && !!href) folders[folderName] = href;
