@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as crypto from "crypto";
 
 if (!fs.existsSync("./config.json")) {
-    fs.writeFileSync("./config.json", JSON.stringify({ token: "", owners: [], prefix: "!", ticketCategory: "", ticketChannel: "" }, null, 4));
+    fs.writeFileSync("./config.json", JSON.stringify({ token: "", owners: [], prefix: "!", guild: "", ticketCategory: "", ticketChannel: "" }, null, 4));
     process.exit(0);
 };
 if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
@@ -13,6 +13,7 @@ let config: {
     encKey: string,
     owners: string[],
     prefix: string,
+    guild: string,
     ticketCategory: string,
     ticketChannel: string
 } = JSON.parse(fs.readFileSync("./config.json", "utf8"));
@@ -21,9 +22,12 @@ let users: {
         id: string,
         password: string,
         channelID: string,
+        messageID: string,
         setID: string
     }
 } = JSON.parse(fs.readFileSync("./users.json", "utf8"));
+
+let classes: { [key: string]: ClassCard } = {};
 
 const client: Client = new Client({
     "intents": [
@@ -44,17 +48,55 @@ const client: Client = new Client({
     ]
 });
 
+(async () => {
+    console.info("잠시만 기다려주세요.");
+    await Promise.all(Object.keys(users).map(async key => {
+        try {
+            let user = users[key];
+            if (!classes[key]) classes[key] = new ClassCard();
+            if (user.id && user.password) {
+                classes[key].login(decrypt(user.id), decrypt(user.password));
+                let res = await classes[key].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success).catch(() => false);
+                if (!res) {
+                    user.id = "";
+                    user.password = "";
+                };
+            };
+            if (user.setID) {
+                let res = user.setID && await classes[key].setSetInfo(user.setID).then(res => res?.success).catch(() => false);
+                if (!res) user.setID = "";
+            };
+            if (user.channelID && user.messageID) client.once("ready", async () => {
+                let guild = client.guilds.cache.get(config.guild);
+                if (!guild) return;
+                let channel = guild?.channels.cache.get(user.channelID) as TextChannel;
+                if (!channel) return;
+                let message = await channel.messages.fetch(user.messageID);
+                if (!message) return;
+                updateMessage(message, key, "edit", !user.id || !user.password ? "idPass" : !user.setID ? "set" : "");
+            });
+            fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+        } catch { };
+    }));
+    console.clear();
+    client.login(config.token);
+})();
+
 client.on("ready", () => console.info("Logged in as " + client.user?.tag));
 
 client.on("interactionCreate", async (interaction) => {
-    if (!users[interaction.user.id]) users[interaction.user.id] = { id: "", password: "", channelID: "", setID: "" };
+    if (!users[interaction.user.id]) users[interaction.user.id] = { id: "", password: "", channelID: "", messageID: "", setID: "" };
     fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
     let user = users[interaction.user.id];
     if (interaction.isButton()) {
         const channel = interaction.channel as TextChannel;
         if (!channel.topic?.includes("Created By " + client.user?.username)) return;
+        if (!interaction.customId.endsWith("_modal")) await interaction.reply({ embeds: [new MessageEmbed().setTitle("⚙️ 잠시만 기다려주세요.").setColor("BLUE")], ephemeral: true });
         if (interaction.customId === "create_ticket") {
-            if (user.channelID && interaction.guild?.channels.cache.get(user.channelID)) return interaction.reply({ "embeds": [new MessageEmbed().setTitle("❌ Failed").setDescription(`이미 티켓이 존재합니다. 채널: <#${user.channelID}>`)], "ephemeral": true });
+            if (user.channelID && interaction.guild?.channels.cache.get(user.channelID)) {
+                interaction.editReply({ "embeds": [new MessageEmbed().setTitle("❌ Failed").setDescription(`티켓이 이미 존재합니다. 채널: <#${user.channelID}>`).setColor("RED")] });
+                return;
+            };
             let channel = await (interaction.guild?.channels.cache.get(config.ticketCategory) as CategoryChannel).createChannel(`${interaction.user.username.replace(" ", "-")
                 .replace("@", "-").replace("#", "-").replace("[", "-").replace(",", "-").replace("`", "-")
                 .replace("　", "-").replace(" ", "-").replace(' ', "-").replace(' ', '').replace("*", "-").replace("!", "-")
@@ -65,110 +107,32 @@ client.on("interactionCreate", async (interaction) => {
                 "topic": "Created By " + client.user?.username + " | USER: " + interaction.user.id
             });
             user.channelID = channel.id;
+            if (!classes[interaction.user.id]) classes[interaction.user.id] = new ClassCard();
+            let loginResult = user.id && user.password && await classes[interaction.user.id].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success).catch(() => false);
+            if (!loginResult) {
+                user.id = "";
+                user.password = "";
+            };
+            let setResult = user.setID && await classes[interaction.user.id].setSetInfo(user.setID).then(res => res?.success).catch(() => false);
+            if (!setResult) user.setID = "";
+            let message: Message = await updateMessage(channel, interaction.user.id, "send", !loginResult ? "idPass" : !setResult ? "set" : "") as Message;
+            user.messageID = message.id;
             fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
-            await channel.permissionOverwrites.create(interaction.user, { "VIEW_CHANNEL": true, "SEND_MESSAGES": true })
-            await channel.send({
-                "content": `<@${interaction.user.id}>`,
-                "embeds": [new MessageEmbed().setTitle("원하는 메뉴를 선택해주세요.").setColor("GREEN")],
-                "components": [
-                    {
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "클래스카드 아이디/비번 설정",
-                                "style": 1,
-                                "custom_id": "set_id_pass"
-                            },
-                            {
-                                "type": 2,
-                                "label": "세트 설정",
-                                "style": 1,
-                                "custom_id": "set_set"
-                            }
-                        ]
-                    },
-                    {
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "암기학습",
-                                "style": 3,
-                                "custom_id": "s_memorize"
-                            },
-                            {
-                                "type": 2,
-                                "label": "리콜학습",
-                                "style": 3,
-                                "custom_id": "s_recall"
-                            },
-                            {
-                                "type": 2,
-                                "label": "스펠학습",
-                                "style": 3,
-                                "custom_id": "s_spell"
-                            }
-                        ]
-                    },
-                    {
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "매칭/스크램블 게임",
-                                "style": 3,
-                                "custom_id": "s_match_scramble"
-                            },
-                            {
-                                "type": 2,
-                                "label": "크래시 게임",
-                                "style": 3,
-                                "custom_id": "s_crash"
-                            },
-                            {
-                                "type": 2,
-                                "label": "퀴즈배틀",
-                                "style": 3,
-                                "custom_id": "quiz_battle"
-                            }
-                        ]
-                    },
-                    {
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "세트 목록 가져오기",
-                                "style": 3,
-                                "custom_id": "get_sets"
-                            }
-                        ]
-                    },
-                    {
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "채널 삭제하기",
-                                "style": 4,
-                                "custom_id": "delete_channel"
-                            }
-                        ]
-                    }
-                ]
-            });
-            interaction.reply({
-                "embeds": [new MessageEmbed().setTitle("✅ Success").setDescription(`설정이 완료되었습니다. 채널: <#${channel.id}>`).setColor("GREEN")],
-                "ephemeral": true
-            });
+            await channel.permissionOverwrites.create(interaction.user, { "VIEW_CHANNEL": true, "SEND_MESSAGES": true });
+            interaction.editReply({ "embeds": [new MessageEmbed().setTitle("✅ Success").setDescription(`설정이 완료되었습니다. 채널: <#${channel.id}>`).setColor("GREEN")] });
             return;
         };
-        if (!channel.topic.split("|")[1].includes(interaction.user.id)) return interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("티켓을 만든 유저만 사용할 수 있습니다.").setColor("RED")], ephemeral: true });
-        if (interaction.customId.startsWith("s_") && !user.setID) return interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("세트를 설정한 뒤 사용해주세요.").setColor("RED")], ephemeral: true });
+        if (!channel.topic.split("|")[1].includes(interaction.user.id)) {
+            interaction[interaction.replied ? "editReply" : "reply"]({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("티켓을 만든 유저만 사용할 수 있습니다.").setColor("RED")], ephemeral: true });
+            return;
+        };
+        if (interaction.customId.startsWith("s_") && !user.setID) {
+            interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("세트를 설정한 뒤 사용해주세요.").setColor("RED")] });
+            return;
+        };
         if (interaction.customId === "delete_channel") {
-            let message: Message = await interaction.reply({
-                embeds: [new MessageEmbed().setTitle("⚠️ Warning").setDescription("정말 채널을 삭제하시겠습니까?").setColor("YELLOW")], ephemeral: true, components: [
+            let message: Message = await interaction.editReply({
+                embeds: [new MessageEmbed().setTitle("⚠️ Warning").setDescription("정말 채널을 삭제하시겠습니까?").setColor("YELLOW")], components: [
                     {
                         "type": 1,
                         "components": [
@@ -186,24 +150,27 @@ client.on("interactionCreate", async (interaction) => {
                             }
                         ]
                     }
-                ], fetchReply: true
+                ]
             }) as Message;
-            await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: "BUTTON" }).then(async (inter) => {
+            let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: "BUTTON" }).then(async (inter) => {
                 if (inter.customId === "yes") {
                     await channel.delete();
                     user.channelID = "";
+                    user.messageID = "";
                     fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
-                } else interaction.editReply({
-                    embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("취소되었습니다.").setColor("GREEN")],
-                    components: []
-                });
+                    return true;
+                };
+            }).catch(() => false);
+            if (!i) interaction.editReply({
+                embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("취소되었습니다.").setColor("GREEN")],
+                components: []
             }).catch(() => false);
             return;
         };
-        if (interaction.customId === "set_id_pass") {
+        if (interaction.customId === "set_id_pass_modal") {
             interaction.showModal({
                 "title": "아이디와 비밀번호를 입력해주세요.",
-                "customId": "id_pass_modal",
+                "customId": "set_id_pass_modal",
                 "components": [{
                     "type": 1,
                     "components": [{
@@ -232,19 +199,113 @@ client.on("interactionCreate", async (interaction) => {
                 }],
             });
         };
+        if (interaction.customId === "set_set_modal") {
+            interaction.showModal({
+                "title": "세트 정보를 입력해주세요.",
+                "customId": "set_set_modal",
+                "components": [{
+                    "type": 1,
+                    "components": [{
+                        "type": 4,
+                        "custom_id": "set_id",
+                        "label": "세트 아이디",
+                        "style": 1,
+                        "min_length": 1,
+                        "max_length": 20,
+                        "placeholder": "0000000",
+                        "required": true
+                    }]
+                }]
+            });
+        };
+        if (interaction.customId === "get_sets") {
+            let result: any = await classes[interaction.user.id].getFolders().catch(() => false);
+            if (!result || !result.success) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("폴더를 불러오는데 실패했습니다.").setColor("RED")] });
+                return;
+            };
+            let folders: { id: string, name: string, isFolder: boolean }[] = [];
+            Object.keys(result.data).forEach(key => folders.push({
+                id: result.data[key],
+                name: key,
+                isFolder: true
+            }));
+            result = await classes[interaction.user.id].getClasses().catch(() => false);
+            if (!result || !result.success) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("클래스를 불러오는데 실패했습니다.").setColor("RED")] });
+                return;
+            };
+            folders = [...result.data, ...folders];
+            let message: Message = await interaction.editReply({
+                embeds: [new MessageEmbed().setTitle("❓ 가져올 폴더나 클래스를 선택해주세요.").setColor("YELLOW")],
+                components: [
+                    {
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 3,
+                                "custom_id": "class_select_1",
+                                "options": folders.map(f => {
+                                    return {
+                                        "label": f.name,
+                                        "value": f.isFolder ? f.name : f.id,
+                                        "description": (f.isFolder ? "폴더" : "클래스"),
+                                        // "emoji": {
+                                        //     "name": "",
+                                        //     "id": ""
+                                        // }
+                                    };
+                                }),
+                                "placeholder": "폴더나 클래스를 선택해주세요.",
+                                "min_values": 1,
+                                "max_values": 1
+                            }
+                        ]
+                    }
+                ]
+            }) as Message;
+            let i: string | false = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: "SELECT_MENU" }).then((interaction) => interaction.values[0]).catch(() => false);
+            if (!i) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("알 수 없는 오류입니다.").setColor("RED")], components: [] });
+                return;
+            };
+            result = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i, /[0-9]/.test(i) ? i : "").catch(() => false);
+            if (!result || !result.success) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("세트를 불러오는데 실패했습니다.").setColor("RED")], components: [] });
+                return;
+            };
+            let sets: { name: string, id: string, type: number }[] = result.data;
+            interaction.editReply({
+                embeds: [new MessageEmbed().setTitle(`**\`${/[0-9]/.test(i) ? folders.find(x => x.id === i)?.name : i}\`**에 있는 세트 목록`).setColor("GREEN").setDescription(sets.map(s => `\`${s.name}\` (**${s.id}**)`).join("\n"))],
+                components: [],
+            });
+        };
     } else if (interaction.isModalSubmit()) {
-        if (interaction.customId === "id_pass_modal") {
+        if (interaction.customId === "set_id_pass_modal") {
             const id = interaction.fields.getTextInputValue("id");
             const password = interaction.fields.getTextInputValue("password");
-            let cc = new ClassCard();
-            let loginResult = await cc.login(id, password);
+            if (!classes[interaction.user.id]) classes[interaction.user.id] = new ClassCard();
+            let loginResult = await classes[interaction.user.id].login(id, password);
             if (loginResult?.success) {
-                user.id = id;
+                user.id = encrypt(id);
                 user.password = encrypt(password);
                 fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+                updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit", "set");
                 interaction.reply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("로그인 성공. 아이디와 비밀번호가 저장되었습니다.").setColor("GREEN")], ephemeral: true });
             } else {
                 interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(loginResult?.message || "알 수 없는 오류입니다.").setColor("RED")], ephemeral: true });
+            };
+        };
+        if (interaction.customId === "set_set_modal") {
+            let setID = interaction.fields.getTextInputValue("set_id");
+            let result = await classes[interaction.user.id].setSetInfo(setID).then(r => r?.success).catch(() => false);
+            if (result) {
+                user.setID = setID;
+                fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+                updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit", "");
+                await interaction.reply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("세트가 설정되었습니다.").setColor("GREEN")], ephemeral: true });
+            } else {
+                await interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("알 수 없는 오류입니다.").setColor("RED")], ephemeral: true });
             };
         };
     };
@@ -292,16 +353,133 @@ client.on("messageCreate", async (message: Message) => {
     };
 });
 
-client.login(config.token);
-
 function encrypt(text: string) {
-    let iv = crypto.randomBytes(8).toString("hex");
-    const cipher = crypto.createCipheriv('aes-256-cbc', config.encKey, iv);
-    return cipher.update(text, 'utf8', 'hex') + cipher.final('hex') + "'" + iv;
+    try {
+        let iv = crypto.randomBytes(8).toString("hex");
+        const cipher = crypto.createCipheriv('aes-256-cbc', config.encKey, iv);
+        return cipher.update(text, 'utf8', 'hex') + cipher.final('hex') + "'" + iv;
+    } catch {
+        return "";
+    };
 };
 
 function decrypt(text: string) {
-    let text2: string[] = text.split("'");
-    const decipher = crypto.createDecipheriv('aes-256-cbc', config.encKey, text2.pop()!);
-    return decipher.update(text2[0], 'hex', 'utf8') + decipher.final('utf8');
+    try {
+        let text2: string[] = text.split("'");
+        const decipher = crypto.createDecipheriv('aes-256-cbc', config.encKey, text2.pop()!);
+        return decipher.update(text2[0], 'hex', 'utf8') + decipher.final('utf8');
+    } catch {
+        return "";
+    };
+};
+
+function updateMessage(message: any, userID: string, s: string, disable: string = ""): Promise<unknown> | null {
+    try {
+        return message[s]({
+            "content": `<@${userID}>`,
+            "embeds": [new MessageEmbed().setTitle(disable === "idPass" ? "아이디와 비밀번호를 설정해주세요." : disable === "set" ? "세트를 설정해주세요." : "원하는 메뉴를 선택해주세요.").setColor(!disable ? "GREEN" : "YELLOW")],
+            "components": getComponents(disable)
+        }).catch(() => false);
+    } catch {
+
+    };
+    return null;
+};
+
+function getComponents(disableMode: string) {
+    let disabled = disableMode === "idPass" || disableMode === "set";
+    return [
+        {
+            "type": 1,
+            "components": [
+                {
+                    "type": 2,
+                    "label": "클래스카드 아이디/비번 설정",
+                    "style": 1,
+                    "custom_id": "set_id_pass_modal"
+                },
+                {
+                    "type": 2,
+                    "label": "세트 설정",
+                    "style": 1,
+                    "custom_id": "set_set_modal",
+                    "disabled": disableMode === "idPass" || disableMode === "all"
+                }
+            ]
+        },
+        {
+            "type": 1,
+            "components": [
+                {
+                    "type": 2,
+                    "label": "암기학습",
+                    "style": 3,
+                    "custom_id": "s_memorize",
+                    "disabled": disabled
+                },
+                {
+                    "type": 2,
+                    "label": "리콜학습",
+                    "style": 3,
+                    "custom_id": "s_recall",
+                    "disabled": disabled
+                },
+                {
+                    "type": 2,
+                    "label": "스펠학습",
+                    "style": 3,
+                    "custom_id": "s_spell",
+                    "disabled": disabled
+                }
+            ]
+        },
+        {
+            "type": 1,
+            "components": [
+                {
+                    "type": 2,
+                    "label": "매칭/스크램블 게임",
+                    "style": 3,
+                    "custom_id": "s_match_scramble",
+                    "disabled": disabled
+                },
+                {
+                    "type": 2,
+                    "label": "크래시 게임",
+                    "style": 3,
+                    "custom_id": "s_crash",
+                    "disabled": disabled
+                },
+                {
+                    "type": 2,
+                    "label": "퀴즈배틀",
+                    "style": 3,
+                    "custom_id": "quiz_battle"
+                }
+            ]
+        },
+        {
+            "type": 1,
+            "components": [
+                {
+                    "type": 2,
+                    "label": "세트 목록 가져오기",
+                    "style": 3,
+                    "custom_id": "get_sets",
+                    "disabled": disableMode === "idPass" || disableMode === "all"
+                }
+            ]
+        },
+        {
+            "type": 1,
+            "components": [
+                {
+                    "type": 2,
+                    "label": "채널 삭제하기",
+                    "style": 4,
+                    "custom_id": "delete_channel"
+                }
+            ]
+        }
+    ]
 };
