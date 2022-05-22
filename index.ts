@@ -463,6 +463,13 @@ function getComponents(disableMode: string) {
                     "style": 3,
                     "custom_id": "s_spell",
                     "disabled": disabled
+                },
+                {
+                    "type": 2,
+                    "label": "테스트",
+                    "style": 3,
+                    "custom_id": "s_test",
+                    "disabled": true || disabled
                 }
             ]
         },
