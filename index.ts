@@ -1,5 +1,5 @@
-import { CategoryChannel, Client, Intents, Message, MessageEmbed, MessageComponent, Channel, TextChannel, ModalSubmitInteraction } from "discord.js";
-import ClassCard from "./classcard";
+import { CategoryChannel, Client, Collection, Intents, Message, MessageEmbed, TextChannel } from "discord.js";
+import { activities, ClassCard, learningType } from "./classcard";
 import * as fs from "fs";
 import * as crypto from "crypto";
 
@@ -219,23 +219,23 @@ client.on("interactionCreate", async (interaction) => {
             });
         };
         if (interaction.customId === "get_sets") {
-            let result: any = await classes[interaction.user.id].getFolders().catch(() => false);
-            if (!result || !result.success) {
+            let foldersResult = await classes[interaction.user.id].getFolders();
+            if (!foldersResult || !foldersResult.success) {
                 interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("폴더를 불러오는데 실패했습니다.").setColor("RED")] });
                 return;
             };
             let folders: { id: string, name: string, isFolder: boolean }[] = [];
-            Object.keys(result.data).forEach(key => folders.push({
-                id: result.data[key],
+            Object.keys(foldersResult.data!).forEach(key => folders.push({
+                id: foldersResult!.data![key],
                 name: key,
                 isFolder: true
             }));
-            result = await classes[interaction.user.id].getClasses().catch(() => false);
-            if (!result || !result.success) {
+            let classesResult = await classes[interaction.user.id].getClasses();
+            if (!classesResult || !classesResult.success) {
                 interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("클래스를 불러오는데 실패했습니다.").setColor("RED")] });
                 return;
             };
-            folders = [...result.data, ...folders];
+            folders = [...classesResult.data!, ...folders];
             let message: Message = await interaction.editReply({
                 embeds: [new MessageEmbed().setTitle("❓ 가져올 폴더나 클래스를 선택해주세요.").setColor("YELLOW")],
                 components: [
@@ -269,16 +269,49 @@ client.on("interactionCreate", async (interaction) => {
                 interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("알 수 없는 오류입니다.").setColor("RED")], components: [] });
                 return;
             };
-            result = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i, /[0-9]/.test(i) ? i : "").catch(() => false);
-            if (!result || !result.success) {
+            let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i, /[0-9]/.test(i) ? i : "");
+            if (!setsResult || !setsResult.success || !setsResult.data) {
                 interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("세트를 불러오는데 실패했습니다.").setColor("RED")], components: [] });
                 return;
             };
-            let sets: { name: string, id: string, type: number }[] = result.data;
+            let sets: { name: string, id: string, type: number }[] = setsResult.data;
             interaction.editReply({
                 embeds: [new MessageEmbed().setTitle(`**\`${/[0-9]/.test(i) ? folders.find(x => x.id === i)?.name : i}\`**에 있는 세트 목록`).setColor("GREEN").setDescription(sets.map(s => `\`${s.name}\` (**${s.id}**)`).join("\n"))],
                 components: [],
             });
+        };
+        if (["s_memorize", "s_recall", "s_spell"].includes(interaction.customId)) {
+            let result = await classes[interaction.user.id].sendLearnAll(learningType[((interaction.customId === "s_memorize" ? "암기" : interaction.customId === "s_recall" ? "리콜" : "스펠") + "학습") as "암기학습" | "리콜학습" | "스펠학습"]);
+            if (!result || !result.success) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(result?.message || "알 수 없는 오류입니다.").setColor("RED")] });
+                return;
+            };
+            interaction.editReply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("학습 완료.").addField("before", String(result.data?.before) + "%", true).addField("after", String(result.data?.after) + "%", true).setColor("GREEN")] });
+        };
+        if (["s_match_scramble", "s_crash"].includes(interaction.customId)) {
+            await interaction.editReply({ embeds: [new MessageEmbed().setTitle("❓ 원하는 점수를 입력해주세요.").setColor("YELLOW")] });
+            let collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
+                filter: (m) => m.author.id === interaction.user.id,
+                time: 30000,
+                max: 1
+            }).catch(() => interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("시간이 초과되었습니다.").setColor("RED")] }).then(() => false));
+            if (!collected) return;
+            collected.first()?.delete();
+            let score = parseInt(String(collected.first()?.content));
+            if (isNaN(score) || score > 990000 || score < (interaction.customId === "s_match_scramble" ? 100 : 10)) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(`점수를 ${isNaN(score) ? "숫자로만" : score > 990000 ? "990000점 이하로" : ((interaction.customId === "s_match_scramble" ? 100 : 10) + "점 이상으로")} 입력해주세요.`).setColor("RED")] });
+                return;
+            };
+            if (score % (interaction.customId === "s_match_scramble" ? 100 : 10) != 0) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(`점수를 ${interaction.customId === "s_match_scramble" ? 100 : 10}점 단위로 입력해주세요.`).setColor("RED")] });
+                return;
+            };
+            let result = await classes[interaction.user.id].sendScore((interaction.customId === "s_match_scramble" ? activities["매칭"] : activities["크래시"]), score);
+            if (!result || !result.success) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(result?.message || "알 수 없는 오류입니다.").setColor("RED")] });
+                return;
+            };
+            interaction.editReply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription(result.message).setColor("GREEN")] });
         };
     } else if (interaction.isModalSubmit()) {
         if (interaction.customId === "set_id_pass_modal") {
@@ -298,8 +331,8 @@ client.on("interactionCreate", async (interaction) => {
         };
         if (interaction.customId === "set_set_modal") {
             let setID = interaction.fields.getTextInputValue("set_id");
-            let result = await classes[interaction.user.id].setSetInfo(setID).then(r => r?.success).catch(() => false);
-            if (result) {
+            let result = await classes[interaction.user.id].setSetInfo(setID);
+            if (result?.success) {
                 user.setID = setID;
                 fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit", "");

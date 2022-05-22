@@ -124,7 +124,7 @@ class ClassCard {
         return null;
     };
 
-    async getSets(f: string, classID?: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string }[], error?: { message: string, stack: string | undefined } } | null> {
+    async getSets(f: string, classID?: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: number }[], error?: { message: string, stack: string | undefined } } | null> {
         try {
             if (f === "클래스" && !classID) f = "이용한 세트";
             let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${folder[f]}/${f === "클래스" ? classID : ""}`).catch(() => { throw new Error("세트 목록을 가져올 수 없습니다.") });
@@ -147,10 +147,10 @@ class ClassCard {
         return null;
     };
 
-    async getClasses(): Promise<{ success: boolean, message: string, data?: { id: string, name: string }[], error?: { message: string, stack: string | undefined } } | null> {
+    async getClasses(): Promise<{ success: boolean, message: string, data?: { id: string, name: string, isFolder: false }[], error?: { message: string, stack: string | undefined } } | null> {
         try {
             let res: AxiosResponse = await this.client.get("https://www.classcard.net/Main").catch(() => { throw new Error("클래스 목록을 가져올 수 없습니다.") });
-            let classes = (res.data.replace(/\r?\n/g, "").match(/(?<=<a class="left-class-items)(.*?)(?=<\/div><\/div><\/a>)/g) || []).map((htmlset: string) => { return { "name": htmlset.split('<div class="cc-ellipsis l1">')[1], "id": htmlset.match(/(?<=href="\/ClassMain\/)(.*?)(?=" >)/)![0] } });
+            let classes = (res.data.replace(/\r?\n/g, "").match(/(?<=<a class="left-class-items)(.*?)(?=<\/div><\/div><\/a>)/g) || []).map((htmlset: string) => { return { "name": htmlset.split('<div class="cc-ellipsis l1">')[1], "id": htmlset.match(/(?<=href="\/ClassMain\/)(.*?)(?=" >)/)![0], "isFolder": false } });
             return {
                 success: true,
                 message: "성공",
@@ -340,7 +340,7 @@ class ClassCard {
             let tid: string = res.data.match(/(?<=var tid = ')(.*?)(?=';)/)[0];
             res.data = res.data.replace(/\r?\n/g, "");
             let ggk: any = res.data.match(/(?<=var )ggk = {(.*?)}};/)[0];
-            if (!tid || !ggk) throw new Error("GGK, TID를 찾을 수 없습니다.");
+            if (!tid || !ggk) throw new Error("ggk또는 tid를 찾을 수 없습니다.");
             eval(ggk);
             let send_data: any[] = [];
             if (game === 4 && this.set.type === "word") send_data.push(ggk.d(100, 0));
