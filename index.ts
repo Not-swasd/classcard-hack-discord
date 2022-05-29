@@ -4,7 +4,8 @@ import * as fs from "fs";
 import * as crypto from "crypto";
 
 if (!fs.existsSync("./config.json")) {
-    fs.writeFileSync("./config.json", JSON.stringify({ token: "", owners: [], prefix: "!", guild: "", ticketCategory: "", ticketChannel: "" }, null, 4));
+    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["대빵 디코 아이디"], prefix: "!", guild: "적지마", ticketCategory: "적지마", ticketChannel: "적지마" }, null, 4));
+    console.info("config.json 설정좀");
     process.exit(0);
 };
 if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
@@ -71,8 +72,14 @@ const client: Client = new Client({
                 if (!guild) return;
                 let channel = guild?.channels.cache.get(user.channelID) as TextChannel;
                 if (!channel) return;
-                let message = await channel.messages.fetch(user.messageID);
-                if (!message) return;
+                let message = await channel.messages.fetch(user.messageID).catch(() => false);
+                if (!message) {
+                    channel.delete();
+                    user.channelID = "";
+                    user.messageID = "";
+                    fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+                    return;
+                };
                 updateMessage(message, key, "edit", !user.id || !user.password ? "idPass" : !user.setID ? "set" : "");
             });
             fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
@@ -93,11 +100,16 @@ client.on("interactionCreate", async (interaction) => {
         if (!channel.topic?.includes("Created By " + client.user?.username)) return;
         if (!interaction.customId.endsWith("_modal")) await interaction.reply({ embeds: [new MessageEmbed().setTitle("⚙️ 잠시만 기다려주세요.").setColor("BLUE")], ephemeral: true });
         if (interaction.customId === "create_ticket") {
-            if (user.channelID && interaction.guild?.channels.cache.get(user.channelID)) {
-                interaction.editReply({ "embeds": [new MessageEmbed().setTitle("❌ Failed").setDescription(`티켓이 이미 존재합니다. 채널: <#${user.channelID}>`).setColor("RED")] });
-                return;
+            let channel = interaction.guild?.channels.cache.get(user.channelID) as TextChannel;
+            if (user.channelID && channel) {
+                if (!user.messageID || await channel.messages.fetch(user.messageID).catch(() => false)) {
+                    await channel.delete();
+                } else {
+                    interaction.editReply({ "embeds": [new MessageEmbed().setTitle("❌ Failed").setDescription(`티켓이 이미 존재합니다. 채널: <#${user.channelID}>`).setColor("RED")] });
+                    return;
+                };
             };
-            let channel = await (interaction.guild?.channels.cache.get(config.ticketCategory) as CategoryChannel).createChannel(`${interaction.user.username.replace(" ", "-")
+            channel = await (interaction.guild?.channels.cache.get(config.ticketCategory) as CategoryChannel).createChannel(`${interaction.user.username.replace(" ", "-")
                 .replace("@", "-").replace("#", "-").replace("[", "-").replace(",", "-").replace("`", "-")
                 .replace("　", "-").replace(" ", "-").replace(' ', "-").replace(' ', '').replace("*", "-").replace("!", "-")
                 .replace("$", "-").replace("%", "-").replace("^", "-").replace("&", "-").replace("*", "-").replace("(", "-").replace(")", "-")
@@ -108,15 +120,8 @@ client.on("interactionCreate", async (interaction) => {
             });
             user.channelID = channel.id;
             if (!classes[interaction.user.id]) classes[interaction.user.id] = new ClassCard();
-            let loginResult = user.id && user.password && await classes[interaction.user.id].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success).catch(() => false);
-            if (!loginResult) {
-                user.id = "";
-                user.password = "";
-            };
-            let setResult = user.setID && await classes[interaction.user.id].setSetInfo(user.setID).then(res => res?.success).catch(() => false);
-            if (!setResult) user.setID = "";
-            let message: Message = await updateMessage(channel, interaction.user.id, "send", !loginResult ? "idPass" : !setResult ? "set" : "") as Message;
-            user.messageID = message.id;
+            let message: Message = await updateMessage(channel, interaction.user.id, "send", !user.id || !user.password ? "idPass" : !user.setID ? "set" : "") as Message;
+            if (message.id) user.messageID = message.id;
             fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
             await channel.permissionOverwrites.create(interaction.user, { "VIEW_CHANNEL": true, "SEND_MESSAGES": true });
             interaction.editReply({ "embeds": [new MessageEmbed().setTitle("✅ Success").setDescription(`설정이 완료되었습니다. 채널: <#${channel.id}>`).setColor("GREEN")] });
@@ -276,7 +281,7 @@ client.on("interactionCreate", async (interaction) => {
             };
             let sets: { name: string, id: string, type: number }[] = setsResult.data;
             interaction.editReply({
-                embeds: [new MessageEmbed().setTitle(`**\`${/[0-9]/.test(i) ? folders.find(x => x.id === i)?.name : i}\`**에 있는 세트 목록`).setColor("GREEN").setDescription(sets.map(s => `\`${s.name}\` (**${s.id}**)`).join("\n"))],
+                embeds: [new MessageEmbed().setTitle(`**\`${/[0-9]/.test(i) ? folders.find(x => x.id === i)?.name : i}\`**에 있는 세트 목록`).setColor("GREEN").setDescription(sets.length < 1 ? `이 ${/[0-9]/.test(i) ? "클래스" : "폴더"}에 세트가 하나도 없습니다.` : sets.map(s => `\`${s.name}\` (**${s.id}**)`).join("\n"))],
                 components: [],
             });
         };
@@ -296,22 +301,25 @@ client.on("interactionCreate", async (interaction) => {
                 max: 1
             }).catch(() => interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("시간이 초과되었습니다.").setColor("RED")] }).then(() => false));
             if (!collected) return;
+            await interaction.editReply({ embeds: [new MessageEmbed().setTitle("⚙️ 잠시만 기다려주세요.").setColor("BLUE")] });
             collected.first()?.delete();
             let score = parseInt(String(collected.first()?.content));
-            if (isNaN(score) || score > 990000 || score < (interaction.customId === "s_match_scramble" ? 100 : 10)) {
-                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(`점수를 ${isNaN(score) ? "숫자로만" : score > 990000 ? "990000점 이하로" : ((interaction.customId === "s_match_scramble" ? 100 : 10) + "점 이상으로")} 입력해주세요.`).setColor("RED")] });
+            let scoreUnit = interaction.customId === "s_match_scramble" ? 100 : 10;
+            if (isNaN(score) || score > 990000 || score < scoreUnit) {
+                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(`점수를 ${score % scoreUnit != 0 ? scoreUnit + "점 단위로" : isNaN(score) ? "숫자로만" : score > 990000 ? "990000점 이하로" : (scoreUnit + "점 이상으로")} 입력해주세요.`).setColor("RED")] });
                 return;
             };
-            if (score % (interaction.customId === "s_match_scramble" ? 100 : 10) != 0) {
-                interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(`점수를 ${interaction.customId === "s_match_scramble" ? 100 : 10}점 단위로 입력해주세요.`).setColor("RED")] });
-                return;
-            };
-            let result = await classes[interaction.user.id].sendScore((interaction.customId === "s_match_scramble" ? activities["매칭"] : activities["크래시"]), score);
+            let result = await classes[interaction.user.id].sendScore((interaction.customId === "s_match_scramble" ? activities["매칭"] : activities["크래시"]), score, true);
             if (!result || !result.success) {
                 interaction.editReply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription(result?.message || "알 수 없는 오류입니다.").setColor("RED")] });
                 return;
             };
-            interaction.editReply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription(result.message).setColor("GREEN")] });
+            let embed = new MessageEmbed().setTitle("✅ Success").setDescription(result.message).setColor("GREEN");
+            if (result.data?.rank) {
+                if (result.data.rank.all) embed.addField("전체 순위", result.data.rank.all.toString());
+                if (result.data.rank.class) embed.addField("반 순위", result.data.rank.class.toString());
+            };
+            interaction.editReply({ embeds: [embed] });
         };
     } else if (interaction.isModalSubmit()) {
         if (interaction.customId === "set_id_pass_modal") {
@@ -322,6 +330,7 @@ client.on("interactionCreate", async (interaction) => {
             if (loginResult?.success) {
                 user.id = encrypt(id);
                 user.password = encrypt(password);
+                user.setID = "";
                 fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit", "set");
                 interaction.reply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("로그인 성공. 아이디와 비밀번호가 저장되었습니다.").setColor("GREEN")], ephemeral: true });
@@ -332,11 +341,15 @@ client.on("interactionCreate", async (interaction) => {
         if (interaction.customId === "set_set_modal") {
             let setID = interaction.fields.getTextInputValue("set_id");
             let result = await classes[interaction.user.id].setSetInfo(setID);
-            if (result?.success) {
+            if (result && result?.success) {
                 user.setID = setID;
                 fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit", "");
-                await interaction.reply({ embeds: [new MessageEmbed().setTitle("✅ Success").setDescription("세트가 설정되었습니다.").setColor("GREEN")], ephemeral: true });
+                let embed = new MessageEmbed().setTitle("✅ Success").setDescription("세트가 설정되었습니다.").addField("이름", result.data?.name!).setColor("GREEN");
+                let total = await classes[interaction.user.id].getTotal();
+                if (total && total.data) embed.addField("현재 학습 진행도", `암기: ${total.data.Memorize}%\n리콜: ${total.data.Recall}%\n스펠: ${total.data.Spell}%`);
+                embed.addField("카드 개수", String(result.data?.study_data.length) + "개", true);
+                await interaction.reply({ embeds: [embed], ephemeral: true });
             } else {
                 await interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ Failed").setDescription("알 수 없는 오류입니다.").setColor("RED")], ephemeral: true });
             };
@@ -360,6 +373,7 @@ client.on("messageCreate", async (message: Message) => {
             let channel = await category.createChannel("사용", { "topic": "Created By " + client.user?.username + " | DO NOT DELETE" });
             await channel.permissionOverwrites.edit(message.guild!.roles.everyone, { "VIEW_CHANNEL": true });
             config.ticketChannel = channel.id;
+            config.guild = message.guild.id;
             fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
             await channel.send({
                 "embeds": [new MessageEmbed().setTitle("버튼을 눌러주세요.").setColor("GREEN")],
@@ -382,6 +396,15 @@ client.on("messageCreate", async (message: Message) => {
                 message.delete();
                 replied.delete();
             }, 5000);
+        };
+
+        if (cmd === "eval") {
+            try {
+                let res = await eval(args.join(" "));
+                message.reply({ embeds: [new MessageEmbed().setTitle(`✅ Success`).setDescription(`\`\`\`xl\n${res}\`\`\``).setColor("GREEN").setTimestamp()] });
+            } catch (e) {
+                message.reply({ embeds: [new MessageEmbed().setTitle(`❌ Failed`).setDescription(`\`\`\`xl\n${e}\`\`\``).setColor("RED").setTimestamp()] });
+            };
         };
     };
 });
@@ -412,16 +435,16 @@ function updateMessage(message: any, userID: string, s: string, disable: string 
             "content": `<@${userID}>`,
             "embeds": [new MessageEmbed().setTitle(disable === "idPass" ? "아이디와 비밀번호를 설정해주세요." : disable === "set" ? "세트를 설정해주세요." : "원하는 메뉴를 선택해주세요.").setColor(!disable ? "GREEN" : "YELLOW")],
             "components": getComponents(disable)
-        }).catch(() => false);
-    } catch {
-
+        });
+    } catch (e) {
+        console.log(e)
     };
     return null;
 };
 
 function getComponents(disableMode: string) {
     let disabled = disableMode === "idPass" || disableMode === "set";
-    return [
+    let components = [
         {
             "type": 1,
             "components": [
@@ -429,18 +452,21 @@ function getComponents(disableMode: string) {
                     "type": 2,
                     "label": "클래스카드 아이디/비번 설정",
                     "style": 1,
-                    "custom_id": "set_id_pass_modal"
-                },
-                {
-                    "type": 2,
-                    "label": "세트 설정",
-                    "style": 1,
-                    "custom_id": "set_set_modal",
-                    "disabled": disableMode === "idPass" || disableMode === "all"
+                    "custom_id": "set_id_pass_modal",
+                    "disabled": false
                 }
             ]
-        },
-        {
+        }
+    ];
+    if (disableMode !== "idPass") components[0].components.push({
+        "type": 2,
+        "label": "세트 설정",
+        "style": 1,
+        "custom_id": "set_set_modal",
+        "disabled": false
+    });
+    if (!disabled) {
+        components.push({
             "type": 1,
             "components": [
                 {
@@ -448,78 +474,81 @@ function getComponents(disableMode: string) {
                     "label": "암기학습",
                     "style": 3,
                     "custom_id": "s_memorize",
-                    "disabled": disabled
+                    "disabled": false
                 },
                 {
                     "type": 2,
                     "label": "리콜학습",
                     "style": 3,
                     "custom_id": "s_recall",
-                    "disabled": disabled
+                    "disabled": false
                 },
                 {
                     "type": 2,
                     "label": "스펠학습",
                     "style": 3,
                     "custom_id": "s_spell",
-                    "disabled": disabled
+                    "disabled": false
                 },
                 {
                     "type": 2,
                     "label": "테스트",
                     "style": 3,
                     "custom_id": "s_test",
-                    "disabled": true || disabled
+                    "disabled": true
                 }
             ]
+        });
+    }
+    components.push({
+        "type": 1,
+        "components": [
+            {
+                "type": 2,
+                "label": "퀴즈배틀",
+                "style": 3,
+                "custom_id": "quiz_battle",
+                "disabled": false
+            }
+        ]
+    });
+    if (!disabled) {
+        components[components.length - 1].components.unshift({
+            "type": 2,
+            "label": "매칭/스크램블 게임",
+            "style": 3,
+            "custom_id": "s_match_scramble",
+            "disabled": disabled
         },
-        {
-            "type": 1,
-            "components": [
-                {
-                    "type": 2,
-                    "label": "매칭/스크램블 게임",
-                    "style": 3,
-                    "custom_id": "s_match_scramble",
-                    "disabled": disabled
-                },
-                {
-                    "type": 2,
-                    "label": "크래시 게임",
-                    "style": 3,
-                    "custom_id": "s_crash",
-                    "disabled": disabled
-                },
-                {
-                    "type": 2,
-                    "label": "퀴즈배틀",
-                    "style": 3,
-                    "custom_id": "quiz_battle"
-                }
-            ]
-        },
-        {
-            "type": 1,
-            "components": [
-                {
-                    "type": 2,
-                    "label": "세트 목록 가져오기",
-                    "style": 3,
-                    "custom_id": "get_sets",
-                    "disabled": disableMode === "idPass" || disableMode === "all"
-                }
-            ]
-        },
-        {
-            "type": 1,
-            "components": [
-                {
-                    "type": 2,
-                    "label": "채널 삭제하기",
-                    "style": 4,
-                    "custom_id": "delete_channel"
-                }
-            ]
-        }
-    ]
+            {
+                "type": 2,
+                "label": "크래시 게임",
+                "style": 3,
+                "custom_id": "s_crash",
+                "disabled": disabled
+            });
+    };
+    if (disableMode !== "idPass") components.push({
+        "type": 1,
+        "components": [{
+            "type": 2,
+            "label": "세트 목록 가져오기",
+            "style": 3,
+            "custom_id": "get_sets",
+            "disabled": false
+        }]
+    });
+    components.push({
+        "type": 1,
+        "components": [
+            {
+                "type": 2,
+                "label": "채널 삭제하기",
+                "style": 4,
+                "custom_id": "delete_channel",
+                "disabled": false
+            }
+        ]
+    });
+    return components;
 };

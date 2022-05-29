@@ -28,13 +28,6 @@ enum activities {
     "크래시",
 };
 
-const activities2: { [key: number]: string } = {
-    1: "암기학습",
-    2: "리콜학습",
-    3: "스펠학습",
-    4: "매칭",
-    5: "크래시"
-};
 const folder: { [key: string]: string } = {
     "이용한 세트": "Main",
     "만든 세트": "make",
@@ -328,7 +321,7 @@ class ClassCard {
         return null;
     };
 
-    async sendScore(game: activities, score: number) {
+    async sendScore(game: activities, score: number, fetchRank?: boolean) {
         try {
             if (!this.set.id) throw new Error("세트를 설정해주세요.");
             if (![4, 5].includes(game)) throw new Error("지원하지 않는 게임입니다.");
@@ -361,9 +354,36 @@ class ClassCard {
             data.append("activity", game);
 
             await this.client.post("https://www.classcard.net/Match/save", data).then(res => { if (!res.data || res.data.result !== "ok") throw new Error("저장 실패 msg: " + res.data.msg); });
+
+            let rank: { [key: string]: string | null } = {
+                "class": null,
+                "all": null,
+            };
+            if (fetchRank) {
+                try {
+                    let res: AxiosResponse = await this.client.post("https://www.classcard.net/MainAsync/getRank", transformRequest({
+                        user_idx: this.user.id,
+                        class_idx: this.set.class.id,
+                        set_idx: this.set.id,
+                        activity: game,
+                        limit: 44444,
+                        current_score: score
+                    }), { timeout: 5000 }).catch(() => false) as AxiosResponse;
+                    if (res && res.data) for (const t of ["class", "all"]) {
+                        let rankObj = res.data[t + "_rank_list"].find((x: any) => x.is_me === 1);
+                        if (!rankObj) rank[t] = t === "class" ? "반 순위를 보고싶다면 세트 목록 가져오기 -> 반 선택 -> 세트 설정 후 실행해주세요." : "순위가 44444등 보다 낮습니다.";
+                        else rank[t] = rankObj.rank;
+                    };
+                } catch { };
+            };
             return {
                 success: true,
-                message: `${score}점이 ${activities2[game]}게임에 저장되었습니다.`
+                message: "성공",
+                data: {
+                    game,
+                    score,
+                    rank
+                }
             };
         } catch (e) {
             if (e instanceof Error) return {
