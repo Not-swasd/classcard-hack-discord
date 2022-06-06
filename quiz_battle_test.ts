@@ -3,12 +3,6 @@ import * as readline from "readline";
 import { QuizBattle } from "./classcard";
 import axios from "axios";
 
-enum battleModes {
-    "레이스" = "0",
-    "스펠" = "1",
-    "헌트" = "2",
-    "스크램블" = "0"
-};
 (async () => {
     let battle_id = Number(await question("배틀 코드: "));
     if (!battle_id) return;
