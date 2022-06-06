@@ -13,7 +13,7 @@ enum setType {
     "drill", //드릴
     "listen", //듣기
     "answer" //정답
-}
+};
 enum learningType {
     "암기학습" = "Memorize",
     "리콜학습" = "Recall",
@@ -40,11 +40,11 @@ class ClassCard {
         id: string,
         name: string,
         type: string,
-        study_data: { "card_idx": string }[],
-        class: {
-            id: string,
-            name: string
-        }
+        study_data: { "card_idx": string }[]
+    };
+    class: {
+        id: string,
+        name: string
     };
     user: {
         name: string,
@@ -60,11 +60,11 @@ class ClassCard {
             id: "",
             name: "",
             type: "",
-            study_data: [],
-            class: {
-                id: "",
-                name: ""
-            }
+            study_data: []
+        };
+        this.class = {
+            id: "",
+            name: ""
         };
         this.user = {
             name: "",
@@ -90,7 +90,7 @@ class ClassCard {
         return this.user;
     };
 
-    async setSetInfo(setId: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string, study_data: { card_idx: string }[], class: { id: string, name: string } }, error?: { message: string, stack: string | undefined } } | null> {
+    async setSetInfo(setId: string): Promise<{ success: boolean, message: string, data?: { id: string, name: string, type: string, study_data: { card_idx: string }[] }, error?: { message: string, stack: string | undefined } } | null> {
         try {
             let res: AxiosResponse = await this.client.get("https://www.classcard.net/set/" + setId).catch(() => { throw new Error("세트 정보를 가져올 수 없습니다.") });
             if (!res.data || res.data.includes("삭제된 세트") || res.data.includes("이 세트는 제작자가 비공개로 지정한 세트입니다")) throw new Error("세트 정보를 가져올 수 없습니다.");
@@ -101,8 +101,8 @@ class ClassCard {
             let study_data: any = JSON.parse(res.data.match(/(?<=var study_data = )\[{(.*?)}\](?=;)/)[0]);
             study_data.forEach((x: any) => Object.keys(x).forEach((key: any) => key !== "card_idx" && delete x[key]));
             this.set.study_data = study_data;
-            this.set.class.id = res.data.match(/(?<=var class_idx = )(.*?)(?=;)/)[0];
-            this.set.class.name = res.data.match(/(?<=var class_name = ')(.*?)(?=';)/)[0];
+            this.class.id = res.data.match(/(?<=var class_idx = )(.*?)(?=;)/)[0];
+            this.class.name = res.data.match(/(?<=var class_name = ')(.*?)(?=';)/)[0];
             return { success: true, message: "세트 정보가 설정되었습니다.", data: this.set };
         } catch (e) {
             if (e instanceof Error) return {
@@ -329,7 +329,7 @@ class ClassCard {
             // if(res.data.includes("세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.")) throw new Error(this.set.type + "세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.");
             // let url: string = "https://www.classcard.net/" + res.data.match(new RegExp(`(?<=chkCardCount2\\('\\/)${game === "5" ? "Crash" : "Match"}\\/(.*?)(?=', 'bottom_${game === "5" ? "crash" : "match"}'\\);)`))[0];
             // if (!url) throw new Error("알 수 없는 오류입니다.");
-            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${game === 4 ? "Match" : "Crash"}/${this.set.id}?c=${this.set.class.id}&s=1`);
+            let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${game === 4 ? "Match" : "Crash"}/${this.set.id}?c=${this.class.id}&s=1`);
             let tid: string = res.data.match(/(?<=var tid = ')(.*?)(?=';)/)[0];
             res.data = res.data.replace(/\r?\n/g, "");
             let ggk: any = res.data.match(/(?<=var )ggk = {(.*?)}};/)[0];
@@ -363,7 +363,7 @@ class ClassCard {
                 try {
                     let res: AxiosResponse = await this.client.post("https://www.classcard.net/MainAsync/getRank", transformRequest({
                         user_idx: this.user.id,
-                        class_idx: this.set.class.id,
+                        class_idx: this.class.id,
                         set_idx: this.set.id,
                         activity: game,
                         limit: 44444,
@@ -510,12 +510,13 @@ class QuizBattle {
         if (data.cmd === "b_check") {
             if (data.result == "fail") {
                 this.ws.close();
-                throw new Error(data.reason || "알 수 없는 오류입니다.");
+                throw new Error(data.reason || "알 수 없는 오류입니다. (1)");
             } else {
                 this.ready = true;
             };
         };
         if (data.cmd === "b_join" && data.result === "ok") {
+            if(data.b_mode === 2) throw new Error("이 배틀 형식은 지원하지 않습니다. (2)");
             this.battleInfo = {
                 b_mode: data.b_mode,
                 test_id: data.test_id,
