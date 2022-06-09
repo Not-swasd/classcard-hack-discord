@@ -4,6 +4,7 @@ import { CookieJar } from 'tough-cookie';
 import Websocket = require("ws");
 // import * as fs from "fs";
 import FormData = require("form-data");
+import EventEmitter = require("events");
 
 enum setType {
     "word" = 1, //단어
@@ -33,7 +34,7 @@ const folder: { [key: string]: string } = {
     "만든 세트": "make",
     "클래스": "ClassMain"
 };
-class ClassCard {
+export default class ClassCard {
     jar: CookieJar;
     client: Axios;
     set: {
@@ -398,7 +399,7 @@ class ClassCard {
     };
 };
 
-class QuizBattle {
+export class QuizBattle extends EventEmitter {
     ws!: Websocket.WebSocket;
     battleID: number;
     pongTimer!: NodeJS.Timeout;
@@ -432,14 +433,30 @@ class QuizBattle {
             exam_quest: []
         }[]
     };
-    userName!: string;
-    ready!: boolean;
-    joined!: boolean;
+    userName: string;
+    ready: boolean;
+    joined: boolean;
+    total: number;
+    correct: number;
+    incorrect: number;
+    remainingQuestions: number;
+    classAvg: number;
+    started: boolean;
     constructor(battleID: number) {
+        super();
         this.battleID = battleID;
+        this.total = 0;
+        this.correct = 0;
+        this.incorrect = 0;
+        this.remainingQuestions = 5;
+        this.classAvg = 0;
+        this.started = false;
+        this.ready = false;
+        this.joined = false;
+        this.userName = "";
     };
 
-    init() {
+    init(): Promise<boolean> {
         return new Promise((resolve) => {
             let port = 800;
             if (this.battleID > 18999 && this.battleID < 28000) {
@@ -462,7 +479,7 @@ class QuizBattle {
                 port = 809;
             };
             this.ws = new Websocket("wss://mobile3.classcard.net/wss_" + port);
-            this.ws.on("message", (m) => this.onMessage(m)); // 일부러 () => 한거임. onMessage에서 this가 Websocket의 this로 인식 됨.
+            this.ws.on("message", (m: Websocket.RawData) => this.onMessage(m)); // 일부러 () => 한거임. onMessage에서 this가 Websocket의 this로 인식 됨.
             this.ws.on("open", async () => {
                 this.sendPong();
                 this.sendMessage({
@@ -479,6 +496,7 @@ class QuizBattle {
     };
 
     sendMessage(message: string | Object): void {
+        if (this.ws.readyState === this.ws.CLOSED || this.ws.readyState === this.ws.CLOSING || this.ws.readyState === this.ws.CONNECTING) return;
         this.ws.send(typeof message === "object" ? JSON.stringify(message) : message);
         this.sendPong();
     };
@@ -486,6 +504,18 @@ class QuizBattle {
     sendPong(): void {
         if (this.pongTimer) clearTimeout(this.pongTimer);
         this.pongTimer = setTimeout(() => this.sendMessage({ cmd: 'pong' }), 10000);
+    };
+
+    addScore() {
+        if (this.remainingQuestions == 0) {
+            this.sendMessage({
+                "cmd": "b_get_rank",
+                "total_score": this.total * 100,
+                "unknown": 0,
+                "quest": [{ "card_idx": "87653696", "score": 100, "correct_yn": 1 }, { "card_idx": "87653697", "score": 100, "correct_yn": 1 }, { "card_idx": "87653698", "score": 100, "correct_yn": 1 }, { "card_idx": "87653699", "score": 100, "correct_yn": 1 }, { "card_idx": "87653700", "score": 100, "correct_yn": 1 }]
+            })
+            this.remainingQuestions = 5;
+        };
     };
 
     async join(name: string) {
@@ -505,18 +535,28 @@ class QuizBattle {
         return true;
     };
 
+    leave(): boolean {
+        if (this.ws.readyState !== this.ws.OPEN) return false;
+        this.ws.close();
+        return true;
+    };
+
     async onMessage(message: Websocket.RawData) {
         let data: any = JSON.parse(message.toString());
         if (data.cmd === "b_check") {
             if (data.result == "fail") {
                 this.ws.close();
-                throw new Error(data.reason || "알 수 없는 오류입니다. (1)");
+                this.emit("error", (data.reason || "알 수 없는 오류입니다.") + " (1)");
+                return;
             } else {
                 this.ready = true;
             };
         };
         if (data.cmd === "b_join" && data.result === "ok") {
-            if(data.b_mode === 2) throw new Error("이 배틀 형식은 지원하지 않습니다. (2)");
+            if (data.b_mode === 2) {
+                this.emit("error", "이 배틀 형식은 지원하지 않습니다. (2)");
+                return;
+            };
             this.battleInfo = {
                 b_mode: data.b_mode,
                 test_id: data.test_id,
@@ -543,16 +583,32 @@ class QuizBattle {
             });
         };
         if (data.cmd === "b_team") this.joined = true;
+        if (data.cmd === "b_out") {
+            if (data.is_today) this.emit("error", "선생님이 오늘 자정까지 접속을 차단하였습니다. (3)");
+            else this.emit("error", "선생님께서 배틀을 종료하셨거나 오류입니다. (4)");
+            return;
+        };
+        if (data.avg_score) this.classAvg = data.avg_score;
+        if (data.cmd === "b_test_start") {
+            await sleep(3000);
+            this.started = true;
+            this.emit("start", true);
+        };
     };
+};
+
+export declare interface QuizBattle {
+    on(event: "error", listener: (error: string) => void): this;
+    on(event: "start", listener: () => void): this;
+    on(event: "end", listener: () => void): this;
 };
 
 function transformRequest(jsonData: Object = {}) {
     return Object.entries(jsonData).map(x => `${encodeURIComponent(x[0])}=${encodeURIComponent(x[1])}`).join('&');
 };
 
-function sleep(ms: number) {
+function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 
-export { ClassCard, QuizBattle, learningType, folder, activities };
-export default ClassCard;
+export { ClassCard, learningType, folder, activities };
