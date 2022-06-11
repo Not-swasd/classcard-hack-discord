@@ -27,7 +27,7 @@ try {
     await page.goto("https://www.classcard.net");
     let cookies = await context.cookies();
     let response = await axios.post("https://www.classcard.net/LoginProc", transformRequest({
-        "sess_key": cookies.find(x => x.name === "ci_session").value,
+        "sess_key": cookies.find(x => x.name === "ci_session")!.value,
         "redirect": "",
         "login_id": config.id,
         "login_pwd": config.password
@@ -39,7 +39,7 @@ try {
         console.error(chalk.redBright(`\r[CCH] 로그인 실패. (msg: ${response.data.msg}) `));
         process.exit(1);
     };
-    response.headers['set-cookie'].forEach(cookie => context.addCookies([
+    response.headers['set-cookie']?.forEach(cookie => context.addCookies([
         {
             name: cookie.split(";")[0].split("=")[0],
             value: cookie.split(";")[0].split("=")[1],
@@ -181,7 +181,7 @@ try {
             return;
         };
         if (p.url().includes("/ClassTest")) page.evaluate(evalContents["testTimeLock"]).catch(() => false);
-        let name = p.url().split(".net/")[1].split("/")[0];
+        let name = p.url().split(".net/")[1].split("/")[0] as "Memorize" | "Recall" | "Spell" | "Match" | "Crash" | "Scramble";
         if (["Memorize", "Recall", "Spell", "Match", "Crash"].includes(name)) {
             console.clear();
             ing = name;
@@ -203,7 +203,8 @@ try {
                 let result = (await page.evaluate(evalContents["gameCustomScore"](name, score)).catch(() => false)) === undefined;
                 console.info(chalk[result ? "greenBright" : "redBright"]("[CCH] " + (result ? "성공" : "실패") + "! 종료 버튼을 누르거나 세트페이지로 이동하세요."));
             } else {
-                let result = (await page.evaluate(["Memorize", "Recall", "Spell"].includes(name) ? evalContents.std : evalContents[name]).catch(() => false)) === undefined;
+                name = name as "Memorize" | "Recall" | "Spell";
+                let result = (await page.evaluate(evalContents.std).catch(() => false)) === undefined;
                 if (["Memorize", "Recall", "Spell"].includes(name)) {
                     let temp = await getSetInfo(false);
                     if (!temp || temp[name] !== (Number(setStatus[name].toString().slice(0, -2) + "00") + 100)) result = false;
@@ -225,9 +226,9 @@ try {
     };
 
     async function getSetInfo(first: boolean) {
-        let response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find(x => x.name === "ci_session").value + ";" } }).catch(() => { return { data: false } });
+        let response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find(x => x.name === "ci_session")!.value + ";" } }).catch(() => { return { data: false } });
         if (!response.data) return false;
-        if (!first) response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find(x => x.name === "ci_session").value + ";" } }).catch(() => { return { data: false } });
+        if (!first) response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find(x => x.name === "ci_session")!.value + ";" } }).catch(() => { return { data: false } });
         setName = response.data.split('set-name-header">')[1].split('<!-- <span')[0].trim();
         let type = response.data.split("set-icon revers ")[1].split('"')[0];
         return {
@@ -239,7 +240,7 @@ try {
     };
 })();
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 
