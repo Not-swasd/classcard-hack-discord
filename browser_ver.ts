@@ -20,14 +20,14 @@ try {
     const browser = await playwright.chromium.launch({ "headless": false });
     const context = await browser.newContext({ "viewport": null });
     const page = await context.newPage();
-    context.on("page", (page) => page.close());
+    context.on("page", (page: playwright.Page) => page.close());
     console.info(chalk.greenBright("\r[CCH] 브라우저가 실행되었습니다.     "));
     const transformRequest = (jsonData: Object = {}) => Object.entries(jsonData).map(x => `${encodeURIComponent(x[0])}=${encodeURIComponent(x[1])}`).join('&');
     process.stdout.write("[CCH] 로그인 중... ");
     await page.goto("https://www.classcard.net");
     let cookies = await context.cookies();
     let response = await axios.post("https://www.classcard.net/LoginProc", transformRequest({
-        "sess_key": cookies.find(x => x.name === "ci_session")!.value,
+        "sess_key": cookies.find((cookie: playwright.Cookie) => cookie.name === "ci_session")!.value,
         "redirect": "",
         "login_id": config.id,
         "login_pwd": config.password
@@ -133,7 +133,7 @@ try {
         "type": string
     };
     let setName: string;
-    page.route("**/*", (route, req) => {
+    page.route("**/*", (route: playwright.Route, req: playwright.Request) => {
         if (req.url().includes("match.js")) route.fulfill({
             status: 200,
             body: fs.readFileSync("./ccfiles/match.js", "utf8")
@@ -153,7 +153,7 @@ try {
         else if (!req.url().startsWith("https://www.classcard.net") && !req.url().startsWith("https://b.classcard.net")) route.abort();
         else route.continue();
     });
-    page.on("load", async p => {
+    page.on("load", async (p: playwright.Page) => {
         if (ing === "Match" && p.url().includes("/Match")) return;
         while (ing || (!!setid && setStatus["Memorize"] != 0 && !setStatus["Memorize"])) {
             await sleep(300);
@@ -226,9 +226,9 @@ try {
     };
 
     async function getSetInfo(first: boolean) {
-        let response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find(x => x.name === "ci_session")!.value + ";" } }).catch(() => { return { data: false } });
+        let response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find((cookie: playwright.Cookie) => cookie.name === "ci_session")!.value + ";" } }).catch(() => { return { data: false } });
         if (!response.data) return false;
-        if (!first) response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find(x => x.name === "ci_session")!.value + ";" } }).catch(() => { return { data: false } });
+        if (!first) response = await axios.get(`https://www.classcard.net/set/${setid}`, { "headers": { "Cookie": "ci_session=" + cookies.find((cookie: playwright.Cookie) => cookie.name === "ci_session")!.value + ";" } }).catch(() => { return { data: false } });
         setName = response.data.split('set-name-header">')[1].split('<!-- <span')[0].trim();
         let type = response.data.split("set-icon revers ")[1].split('"')[0];
         return {
