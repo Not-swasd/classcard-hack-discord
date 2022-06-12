@@ -1,7 +1,7 @@
 # 📗 Classcard Hack
 ⭐ This Repo for a cookie<br>
 언어: [![Language](https://img.shields.io/badge/Language-Node.js-brightgreen?logo=node.js&style=flat-square)](https://nodejs.org/ko)<br>
-Nua07님의 [classcardHack 리포](https://github.com/Nua07/classcardHack/)를 참고하였습니다. <br>
+[Nua07](https://github.com/Nua07)님의 [classcardHack 리포](https://github.com/Nua07/classcardHack/)를 참고하였습니다. <br>
 (browser_ver.ts 내 evalContents["std"], evalContents["testTimeLock"])<br>
 **악용금지!!!**<br>
 
