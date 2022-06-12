@@ -83,11 +83,11 @@ export default class ClassCard {
         };
     };
 
-    getSetInfo() {
+    getSetInfo(): typeof this.set {
         return this.set;
     };
 
-    getUserInfo() {
+    getUserInfo(): typeof this.user {
         return this.user;
     };
 
@@ -430,30 +430,41 @@ export class QuizBattle extends EventEmitter {
             back_data: string,
             front_quest: [],
             back_quest: [],
-            exam_quest: []
+            exam_quest: [],
+            weight: number
         }[]
     };
     userName: string;
     ready: boolean;
     joined: boolean;
-    total: number;
+    score: number;
     correct: number;
-    incorrect: number;
-    remainingQuestions: number;
+    wrong: number;
     classAvg: number;
-    started: boolean;
+    round: {
+        remaining: number;
+        correct: number;
+        wrong: number;
+        quest: { card_idx: string, score: number, correct_yn: number }[]
+    };
+    b_quest_idx: number;
     constructor(battleID: number) {
         super();
         this.battleID = battleID;
-        this.total = 0;
+        this.score = 1000;
         this.correct = 0;
-        this.incorrect = 0;
-        this.remainingQuestions = 5;
+        this.wrong = 0;
         this.classAvg = 0;
-        this.started = false;
         this.ready = false;
         this.joined = false;
         this.userName = "";
+        this.round = {
+            remaining: 5,
+            correct: 0,
+            wrong: 0,
+            quest: []
+        };
+        this.b_quest_idx = 0;
     };
 
     init(): Promise<boolean> {
@@ -506,15 +517,41 @@ export class QuizBattle extends EventEmitter {
         this.pongTimer = setTimeout(() => this.sendMessage({ cmd: 'pong' }), 10000);
     };
 
-    addScore() {
-        if (this.remainingQuestions == 0) {
+    addScore(correct: boolean): void {
+        this.b_quest_idx++;
+        if (this.b_quest_idx >= this.battleInfo.quest_list.length) {
+            this.b_quest_idx = 0;
+            this.makeQuest();
+        };
+        let quest = this.battleInfo.quest_list[this.b_quest_idx];
+        this.round.remaining--;
+        this.round.quest.push({
+            card_idx: quest.test_card_idx,
+            score: correct ? (100 * (quest?.weight || 1)) : 0,
+            correct_yn: correct ? 1 : 0
+        });
+        if (correct) {
+            this.round.correct++;
+            this.correct++;
+        } else {
+            this.round.wrong++;
+            this.wrong++;
+        };
+        this.score += correct ? (100 * (quest?.weight || 1)) : 0;
+        if (this.round.remaining == 0) {
+            if (this.round.wrong <= 0) this.score += 100;
             this.sendMessage({
                 "cmd": "b_get_rank",
-                "total_score": this.total * 100,
+                "total_score": this.score,
                 "unknown": 0,
-                "quest": [{ "card_idx": "87653696", "score": 100, "correct_yn": 1 }, { "card_idx": "87653697", "score": 100, "correct_yn": 1 }, { "card_idx": "87653698", "score": 100, "correct_yn": 1 }, { "card_idx": "87653699", "score": 100, "correct_yn": 1 }, { "card_idx": "87653700", "score": 100, "correct_yn": 1 }]
-            })
-            this.remainingQuestions = 5;
+                "quest": this.round.quest
+            });
+            this.round = {
+                remaining: 5,
+                correct: 0,
+                wrong: 0,
+                quest: []
+            };
         };
     };
 
@@ -553,7 +590,7 @@ export class QuizBattle extends EventEmitter {
             };
         };
         if (data.cmd === "b_join" && data.result === "ok") {
-            if (data.b_mode === 2) {
+            if (data.b_mode === 2 || data.set_type === 5) {
                 this.emit("error", "이 배틀 형식은 지원하지 않습니다. (2)");
                 return;
             };
@@ -570,6 +607,7 @@ export class QuizBattle extends EventEmitter {
                 quest_list: []
             };
             await axios.post("https://b.classcard.net/ClassBattle/battle_quest", "test_id=" + this.battleInfo.test_id).then(res => this.battleInfo.quest_list = res.data.quest_list);
+            this.makeQuest();
             this.sendMessage({
                 cmd: "b_join",
                 battle_id: this.battleID,
@@ -591,9 +629,204 @@ export class QuizBattle extends EventEmitter {
         if (data.avg_score) this.classAvg = data.avg_score;
         if (data.cmd === "b_test_start") {
             await sleep(3000);
-            this.started = true;
-            this.emit("start", true);
+            this.emit("start");
         };
+        if (data.cmd === "b_test_end") {
+            this.sendMessage({
+                "cmd": "b_get_rank",
+                "total_score": this.score,
+                "unknown": 0,
+                "quest": []
+            });
+            this.emit("end");
+        };
+    };
+
+    makeQuest(): void { //클래스카드에서 가져옴. 코드 정리 한거임. 더 하기 귀찮ㅇ...
+        if (this.battleInfo.set_type == 5) return;
+
+        var items = [];
+        var item;
+        if (this.battleInfo.set_type == 4) {
+            while (item = this.battleInfo.quest_list.shift()) {
+                item.q_option = '2';
+                item.option_info = item.front_quest;
+                items.push(item);
+            };
+        } else {
+            var total_cnt = this.battleInfo.quest_list.length;
+            var es_cnt = Math.floor(total_cnt * 0.1);
+            var img_cnt = Math.floor(total_cnt * 0.1);
+            var audio_cnt = Math.floor(total_cnt * 0.1);
+            var make_cnt = 0;
+            var limit_cnt = 0;
+            var loop_cnt = 0;
+
+            if (audio_cnt > 0) {
+                fy(this.battleInfo.quest_list);
+                make_cnt = 0;
+                loop_cnt = 0;
+                limit_cnt = this.battleInfo.quest_list.length;
+
+                while (item = this.battleInfo.quest_list.shift()) {
+                    loop_cnt++;
+
+                    if (!item.audio_path || item.audio_path == '0' || item.back_quest.length == 0 || item.subjective_yn == '1') {
+                        this.battleInfo.quest_list.push(item);
+                        if (loop_cnt < limit_cnt) continue;
+                        else break;
+                    };
+
+                    item.q_option = '5';
+                    item.option_info = item.back_quest;
+                    items.push(item);
+                    make_cnt++;
+
+                    if (make_cnt >= audio_cnt || loop_cnt >= limit_cnt) break;
+                };
+            };
+
+            if (es_cnt > 0) {
+                fy(this.battleInfo.quest_list);
+                make_cnt = 0;
+                loop_cnt = 0;
+                limit_cnt = this.battleInfo.quest_list.length;
+
+                while (item = this.battleInfo.quest_list.shift()) {
+                    loop_cnt++;
+
+                    if (item.example_sentence === undefined || item.example_sentence == null || item.example_sentence.length == 0 || item.subjective_yn == '1') {
+                        this.battleInfo.quest_list.push(item);
+                        if (loop_cnt < limit_cnt) continue;
+                        else break;
+                    };
+
+                    item.q_option = '3';
+                    item.option_info = item.exam_quest;
+                    items.push(item);
+                    make_cnt++;
+
+                    if (make_cnt >= es_cnt || loop_cnt >= limit_cnt) break;
+                };
+            };
+
+            if (img_cnt > 0) {
+                fy(this.battleInfo.quest_list);
+                make_cnt = 0;
+                loop_cnt = 0;
+                limit_cnt = this.battleInfo.quest_list.length;
+
+                while (item = this.battleInfo.quest_list.shift()) {
+                    loop_cnt++;
+
+                    if (!item.img_path || item.subjective_yn == '1') {
+                        this.battleInfo.quest_list.push(item);
+                        if (loop_cnt < limit_cnt) continue;
+                        else break;
+                    };
+
+                    item.q_option = '4';
+                    item.option_info = item.front_quest;
+                    items.push(item);
+                    make_cnt++;
+
+                    if (make_cnt >= img_cnt || loop_cnt >= limit_cnt) break;
+                };
+            };
+
+            fy(this.battleInfo.quest_list);
+            var half_cnt = Math.floor(this.battleInfo.quest_list.length / 2);
+            make_cnt = 0;
+            loop_cnt = 0;
+            limit_cnt = this.battleInfo.quest_list.length;
+
+            if (half_cnt > 0) {
+                while (item = this.battleInfo.quest_list.shift()) {
+                    loop_cnt++;
+
+                    if (!item.back || item.front_quest.length == 0 || item.subjective_yn == '1') {
+                        this.battleInfo.quest_list.push(item);
+                        if (loop_cnt < limit_cnt) continue;
+                        else break;
+                    };
+
+                    item.q_option = '2';
+                    item.option_info = item.front_quest;
+                    items.push(item);
+                    make_cnt++;
+
+                    if (make_cnt >= half_cnt || loop_cnt >= limit_cnt) break;
+                }
+            }
+
+            fy(this.battleInfo.quest_list);
+            loop_cnt = 0;
+            limit_cnt = this.battleInfo.quest_list.length;
+            while (item = this.battleInfo.quest_list.shift()) {
+                loop_cnt++;
+
+                if (!item.front || item.back_quest.length == 0 || item.subjective_yn == '1') {
+                    this.battleInfo.quest_list.push(item);
+                    if (loop_cnt < limit_cnt) continue;
+                    else break;
+                };
+
+                item.q_option = '1';
+                item.option_info = item.back_quest;
+                items.push(item);
+
+                if (loop_cnt >= limit_cnt) break;
+            };
+
+            fy(this.battleInfo.quest_list);
+            loop_cnt = 0;
+            limit_cnt = this.battleInfo.quest_list.length;
+            while (item = this.battleInfo.quest_list.shift()) {
+                loop_cnt++;
+
+                if (!item.img_path || item.subjective_yn == '1') {
+                    this.battleInfo.quest_list.push(item);
+                    if (loop_cnt < limit_cnt) continue;
+                    else break;
+                }
+
+                item.q_option = '4';
+                item.option_info = item.front_quest;
+                items.push(item);
+                make_cnt++;
+
+                if (loop_cnt >= limit_cnt) break;
+            };
+
+            fy(this.battleInfo.quest_list);
+            loop_cnt = 0;
+            limit_cnt = this.battleInfo.quest_list.length;
+            while (item = this.battleInfo.quest_list.shift()) {
+                loop_cnt++;
+
+                item.q_option = '2';
+                item.option_info = item.front_quest;
+                items.push(item);
+
+                if (loop_cnt >= limit_cnt) break;
+            };
+        };
+
+        items.map(quest => {
+            quest.weight = 1;
+            if (quest && (quest.q_option == "3" || quest.q_option == "4" || quest.q_option == "5")) quest.weight = 2;
+            return quest;
+        });
+
+        this.battleInfo.quest_list = items;
+        this.battleInfo.quest_list.sort(function (a, b) {
+            var a1 = Number(a.test_card_idx);
+            var b1 = Number(b.test_card_idx);
+
+            if (a1 < b1) return -1;
+            if (a1 > b1) return 1;
+            return 0;
+        });
     };
 };
 
@@ -603,12 +836,17 @@ export declare interface QuizBattle {
     on(event: "end", listener: () => void): this;
 };
 
-function transformRequest(jsonData: Object = {}) {
+function transformRequest(jsonData: Object = {}): string {
     return Object.entries(jsonData).map(x => `${encodeURIComponent(x[0])}=${encodeURIComponent(x[1])}`).join('&');
 };
 
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+};
+
+function fy(a: Array<object>, b?: any, c?: any, d?: any): void { //클래스카드에서 가져옴.
+    c = a.length;
+    while (c) b = Math.random() * (--c + 1) | 0, d = a[c], a[c] = a[b], a[b] = d
 };
 
 export { ClassCard, learningType, folder, activities };
