@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as crypto from "crypto";
 
 if (!fs.existsSync("./config.json")) {
-    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["대빵 디코 아이디"], prefix: "!", secret: "",guild: "적지마", ticketCategory: "적지마", ticketChannel: "적지마" }, null, 4));
+    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["대빵 디코 아이디"], prefix: "!", secret: "", guild: "적지마", ticketCategory: "적지마", ticketChannel: "적지마" }, null, 4));
     console.info("config.json 설정좀");
     process.exit(0);
 };
@@ -551,27 +551,7 @@ client.on("interactionCreate", async (interaction) => {
                     user.setID = setID;
                     saveUsers()
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
-                    let embed = new EmbedBuilder().setTitle("✅ 세트가 설정되었습니다.").addFields([{ "name": "이름", "value": result.data?.name! }]).setColor("Green");
-                    let total = await classes[interaction.user.id].getTotal();
-                    if (total && total.data) {
-                        if (classes[interaction.user.id].set.type === setType["word"] || classes[interaction.user.id].set.type === setType["sentence"]) embed.addFields([{
-                            "name": "현재 학습 진행도",
-                            "value": `암기: ${total.data.Memorize}%\n리콜: ${total.data.Recall}%\n스펠: ${total.data.Spell}%`,
-                            "inline": true
-                        }]);
-                        if (total.data.Test) {
-                            let order = 1;
-                            var array = total.data.Test.map(score => `${order++}차 - **${score}점**`);
-                            embed.addFields([{
-                                name: "테스트", value: array.length > 0 ? array.reduce((all: any, one: any, i) => {
-                                    const ch = Math.floor(i / 2);
-                                    all[ch] = [].concat((all[ch] || []), one);
-                                    return all
-                                }, []).map((x: string[]) => x[0] + (x[1] ? " " + x[1] : "")).join("\n") : "테스트 기록이 없습니다.", inline: true
-                            }]);
-                        };
-                    };
-                    embed.addFields([{ "name": "카드 개수", "value": String(result.data?.study_data.length) + "개", "inline": true }]);
+                    let embed = new EmbedBuilder().setTitle("✅ 세트가 설정되었습니다.").setDescription("자세한 내용은 위 두번째 임베드를 봐주세요.").setColor("Green");
                     await interaction.reply({ embeds: [embed], ephemeral: true });
                 } else {
                     await interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")], ephemeral: true });
