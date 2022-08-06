@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as crypto from "crypto";
 
 if (!fs.existsSync("./config.json")) {
-    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["대빵 디코 아이디"], prefix: "!", guild: "적지마", ticketCategory: "적지마", ticketChannel: "적지마" }, null, 4));
+    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["대빵 디코 아이디"], prefix: "!", secret: "",guild: "적지마", ticketCategory: "적지마", ticketChannel: "적지마" }, null, 4));
     console.info("config.json 설정좀");
     process.exit(0);
 };
@@ -13,11 +13,12 @@ let config: {
     token: string,
     owners: string[],
     prefix: string,
+    secret: string,
     guild: string,
     ticketCategory: string,
     ticketChannel: string
 } = JSON.parse(fs.readFileSync("./config.json", "utf8"));
-let secret: string = randPassword(32);
+let secret: string = config.secret || randPassword(32);
 let users: {
     [key: string]: {
         id: string,
