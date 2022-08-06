@@ -17,7 +17,7 @@ let config: {
     ticketCategory: string,
     ticketChannel: string
 } = JSON.parse(fs.readFileSync("./config.json", "utf8"));
-let secret: string = "<3cPx2&eQcYt!y[o%}0IUq6#_3t^N$_j" || randPassword(32);
+let secret: string = randPassword(32);
 let users: {
     [key: string]: {
         id: string,
