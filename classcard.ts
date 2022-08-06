@@ -87,31 +87,6 @@ export default class ClassCard {
 
     async login(id: string, password: string) {
         try {
-            //web
-            // await this.client.get("https://www.classcard.net");
-            // let session_key: string = await this.getCookieValue("ci_session");
-            // let res: AxiosResponse = await this.client.post("https://www.classcard.net/LoginProc", transformRequest({
-            //     "sess_key": session_key,
-            //     "redirect": "",
-            //     "login_id": id,
-            //     "login_pwd": password,
-            //     "login_remember": "on"
-            // }));
-            // const reasons: { [key: string]: string } = {
-            //     "id": "아이디",
-            //     "pwd": "비밀번호"
-            // };
-            // if (!res || !res.data || res.data.result !== "ok") throw new Error(!res || !res.data ? "알 수 없는 오류가 발생했습니다." : `${Object.keys(reasons).includes(res.data.msg) ? reasons[res.data.msg] : res.data.msg}가 잘못되었습니다.`);
-            // res = await this.client.get("https://www.classcard.net/Main");
-            // this.user.isPro = !res.data.replace(/\r?\n/g, "").match(/(?<=<span class="label label-)(.*?)(?=<\/span>)/)[0].includes("STANDARD");
-            // let nt = res.data.replace(/\r?\n/g, "").match(/(?<=<br><span class="font-bold">)(.*?)(?=<\/span>)/)[0];
-            // if (nt) {
-            //     this.user.isTeacher = nt.split('<span class="font-12">')[1].includes("선생님");
-            //     this.user.name = nt.split('<span class="font-12">')[0].trim();
-            // };
-            // await this.getFolders(res.data).then(f => f?.success && f.data && Object.keys(f.data!).forEach(key => folder[key] = f.data[key]));
-
-            //api
             var res: AxiosResponse = await this.client.get(`https://mobile.classcard.net/api/users/login?` + transformRequest({
                 "login": 1,
                 "id": id,
@@ -159,34 +134,10 @@ export default class ClassCard {
             } else {
                 throw new Error("알 수 없는 학습 타입입니다.");
             };
-            // let data: FormData = new URLSearchParams();
-            // data.append("set_idx_2", setId);
-            // data.append("card_idx[]", "0");
-            // data.append("score[]", "0");
-            // for (const card_idx in this.set.study_data) {
-            //     data.append("card_idx[]", card_idx);
-            //     data.append("score[]", "1");
-            // };
-            // data.append("activity", "1");
-            // data.append("last_section", "1");
-            // data.append("last_round", "1");
-            // data.append("is_know_card", "1");
-            // data.append("is_w_pro", this.user.isPro ? "1" : "0");
-            // data.append("view_cnt", this.set.study_data.length.toString());
-            // data.append("user_idx", this.user.id);
             let before: number;
             let after: number;
             while (true) {
                 before = percentageCheck ? await this.getTotal().then(t => t!.data![type]) : 0;
-                //web
-                // await this.client.post("https://www.classcard.net/ViewSetAsync/learnAll", data);
-                // await this.client.post("https://www.classcard.net/ViewSetAsync/resetAllLog", transformRequest({
-                //     set_idx: setId,
-                //     activity,
-                //     user_idx: this.user.id,
-                //     view_cnt: this.set.study_data.length,
-                // }));
-                //api
                 let params = new URLSearchParams();
                 let ts = ClassCard.getTimestamp();
                 let p = {
@@ -253,36 +204,6 @@ export default class ClassCard {
             });
             if (!classId) classId = this.class.id;
             if (![4, 5].includes(game)) throw new Error("지원하지 않는 게임입니다.");
-            // // let res: AxiosResponse = await this.client.get("https://www.classcard.net/set/" + setId);
-            // // if(res.data.includes("세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.")) throw new Error(this.set.type + "세트 학습은 유료이용 학원/학교에서만 이용가능합니다. 선생님께 문의해 주세요.");
-            // // let url: string = "https://www.classcard.net/" + res.data.match(new RegExp(`(?<=chkCardCount2\\('\\/)${game === "5" ? "Crash" : "Match"}\\/(.*?)(?=', 'bottom_${game === "5" ? "crash" : "match"}'\\);)`))[0];
-            // // if (!url) throw new Error("알 수 없는 오류가 발생했습니다.");
-            // let res: AxiosResponse = await this.client.get(`https://www.classcard.net/${game === 4 ? "Match" : "Crash"}/${setId}?c=${classId}&s=1`);
-            // let tid: string = res.data.match(/(?<=var tid = ')(.*?)(?=';)/)[0];
-            // res.data = res.data.replace(/\r?\n/g, "");
-            // let ggk: any = res.data.match(/(?<=var )ggk = {(.*?)}};/)[0];
-            // if (!tid || !ggk) throw new Error("ggk또는 tid를 찾을 수 없습니다.");
-            // eval(ggk);
-            // let send_data: any[] = [];
-            // if (game === 4 && this.set.type === 1) send_data.push(ggk.d(100, 0));
-            // else if (game === 4 && this.set.type === 5) for (let i = 0; i < 20; i++) send_data.push(ggk.d(50, 0));
-            // for (var i = 0; i < score / (game === 4 ? 100 : 10); i++) send_data.push(ggk.d(game === 4 ? 100 : 10, 1));
-            // // let data = {
-            // //     set_idx: setId,
-            // //     // arr_key: ggk.a(),
-            // //     // arr_score: send_data,
-            // //     tid,
-            // //     activity: Number(game),
-            // // };
-            // let data: FormData = new URLSearchParams();
-            // data.append("set_idx", setId);
-            // for (const v of ggk.a()) data.append("arr_key[]", v);
-            // for (let i = 0; i < send_data.length; i++) Object.keys(send_data[i]).forEach(v => data.append(`arr_score[${i}][${v}]`, send_data[i][v]));
-            // data.append("tid", tid);
-            // data.append("activity", game);
-            // await this.client.post("https://www.classcard.net/Match/save", data).then(res => { if (!res.data || res.data.result !== "ok") throw new Error("저장 실패 msg: " + res.data.msg); });
-
-            //api
             let params = new URLSearchParams();
             params.append("p", JSON.stringify({
                 "base_info": {
@@ -312,21 +233,6 @@ export default class ClassCard {
             };
             if (fetchRank) {
                 try {
-                    // let res: AxiosResponse = await this.client.post("https://www.classcard.net/MainAsync/getRank", transformRequest({
-                    //     user_idx: this.user.id,
-                    //     class_idx: classId,
-                    //     set_idx: setId,
-                    //     activity: game,
-                    //     limit: 44444,
-                    //     current_score: score
-                    // }), { timeout: 5000 }).catch(() => false) as AxiosResponse;
-                    // if (res && res.data) for (const t of ["class", "all"]) {
-                    //     let rankObj = res.data[t + "_rank_list"].find((x: any) => x.is_me === 1);
-                    //     if (!rankObj) rank[t] = t === "class" ? "반 순위를 보고싶다면 세트 목록 가져오기 -> 반 선택 -> 세트 설정 후 실행해주세요." : "순위가 44444등 보다 낮습니다.";
-                    //     else rank[t] = rankObj.rank;
-                    // };
-
-                    //api
                     let res: AxiosResponse | false = await this.client.get(`https://mobile.classcard.net/api/sets/activity_rank_combine_v2?class_idx=${classId}&set_idx=${setId}&activity=${game}&current_score=${score}&limit=100`);
                     if (!res || !res!.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다.");
                     for (const t of ["class", "all"]) {
@@ -357,20 +263,6 @@ export default class ClassCard {
 
     async getSetInfo(setId: number) {
         try {
-            //web
-            // var res: AxiosResponse | false = await this.client.get("https://www.classcard.net/set/" + setId).catch(() => false);
-            // if (!res || !res.data || res.data.includes("삭제된 세트") || res.data.includes("이 세트는 제작자가 비공개로 지정한 세트입니다")) throw new Error("세트 정보를 가져올 수 없습니다.");
-            // res.data = res.data.replace(/\r?\n/g, "");
-            // this.set.id = setId;
-            // this.set.name = res.data.match(/(?<=set-name-header">)(.*?)(?=<!-- <span)/)[0].trim();
-            // this.set.type = res.data.match(/(?<=set-icon revers )(.*?)(?=")/)[0];
-            // var study_data: any = JSON.parse(res.data.match(/(?<=var study_data = )\[{(.*?)}\](?=;)/)[0]);
-            // study_data.forEach((x: any) => Object.keys(x).forEach((key: any) => key !== "card_idx" && delete x[key]));
-            // this.set.study_data = study_data;
-            // this.class.id = res.data.match(/(?<=var class_idx = )(.*?)(?=;)/)[0];
-            // this.class.name = res.data.match(/(?<=var class_name = ')(.*?)(?=';)/)[0];
-
-            //api
             var res: AxiosResponse | false = await this.client.get("https://mobile.classcard.net/api/sets/info?set_idx=" + setId).catch(() => false); // 비공개 세트도 접속 가능
             if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다.");
             if (res.data.res_data.open_yn !== "1") throw new Error("이 세트는 비공개 세트입니다.");
@@ -464,13 +356,6 @@ export default class ClassCard {
             if (this.set.id !== setId) await this.getSetInfo(setId).then(res => {
                 if (!res?.success) throw new Error(res?.message);
             });
-            // var res2: AxiosResponse = await this.client.get(`https://www.classcard.net/set/${setId}`).catch(() => { throw new Error("세트 정보를 가져올 수 없습니다.") });
-            // console.log(res2.data)
-            // var Memorize = Number(res2.data.match(/(?<=mem-total-rate" data-rate=")(.*?)(?=")/)[0].trim());
-            // var Recall = Number(res2.data.match(/(?<=recall-total-rate" data-rate=")(.*?)(?=")/)[0].trim());
-            // var Spell = Number(res2.data.match(/(?<=spell-total-rate" data-rate=")(.*?)(?=")/)[0].trim());
-
-            //api
 
             let data: {
                 Memorize: number,
@@ -543,11 +428,6 @@ export default class ClassCard {
     async getSets(folderName: string, classId?: number) {
         try {
             if (folderName === "클래스" && !classId) throw new Error("classId 값이 없습니다.");
-            //web
-            // let res: AxiosResponse = await this.client.get("https://www.classcard.net" + (folderName === "클래스" ? "/ClassMain/" + classId : this.folders.find(f => f.name === folderName)?.path)).catch(() => { throw new Error("세트 목록을 가져올 수 없습니다.") });
-            // let sets = (res.data.replace(/\r?\n/g, "").match(/(?<=<div class="set-items )(.*?)(?=(<\/a>|<\/span>)<span class="text-gray font-14 font-normal)/g) || []).map((htmlset: string) => { return { "name": htmlset.split('span class="set-name-copy-text">')[1], "id": htmlset.match(/(?<=data-idx=")([0-9]*?)(?=")/)![0], "type": Number(htmlset.match(/(?<=data-type=")([0-9]*?)(?=")/)![0]) } });
-
-            //api
             let sets: {
                 id: number,
                 name: string,
@@ -600,11 +480,6 @@ export default class ClassCard {
 
     async getClasses() {
         try {
-            //web
-            // let res: AxiosResponse = await this.client.get("https://www.classcard.net/Main").catch(() => { throw new Error("클래스 목록을 가져올 수 없습니다.") });
-            // let classes = (res.data.replace(/\r?\n/g, "").match(/(?<=<a class="left-class-items)(.*?)(?=<\/div><\/div><\/a>)/g) || []).map((htmlset: string) => { return { "name": htmlset.split('<div class="cc-ellipsis l1">')[1], "id": htmlset.match(/(?<=href="\/ClassMain\/)(.*?)(?=" >)/)![0], "isFolder": false } });
-
-            //api
             let res: AxiosResponse | false = await this.client.get("https://mobile.classcard.net/api/users/page?u_idx=" + this.user.id).catch(() => false);
             if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("클래스 목록을 가져올 수 없습니다.");
             let classes = (res.data.res_data.class as { class_idx: string, name: string }[]).map(c => {
@@ -631,19 +506,8 @@ export default class ClassCard {
         };
     };
 
-    async getFolders() { //data?: string
+    async getFolders() {
         try {
-            //web
-            // if (!data) data = await this.client.get("https://www.classcard.net/Main").then(res => res.data);
-            // data = data?.split('<div class="m-t-sm left-sl-list">')[1].split(".go-auth-school-link")[0].replace(/\r?\n/g, "");
-            // let folders: { [key: string]: string } = {};
-            // data?.split("</a>").forEach((i: string) => {
-            //     let folderName = (i.match(/(?<="left-sl-item">)(.*?)(?=<\/div>)/) || [""])[0].trim();
-            //     let href = (i.match(/(?<=href="\/)(.*?)(?=">)/) || [""])[0].trim();
-            //     if (!!folderName && !!href) folders[folderName] = href;
-            // });
-
-            //api
             let res: AxiosResponse | false = await this.client.get("https://mobile.classcard.net/api/sets/folders").catch(() => false);
             if (!res || !res.data?.res_data) throw new Error("폴더 목록을 가져올 수 없습니다.");
             let folders: typeof this.folders = [
