@@ -75,10 +75,14 @@ await Promise.all(Object.keys(users).map(async key => {
             if (!res) {
                 user.id = "";
                 user.password = "";
+                user.setID = 0;
+                user.classID = 0;
             };
         } else {
             user.id = "";
             user.password = "";
+            user.setID = 0;
+            user.classID = 0;
         };
         if (user.setID) {
             let res = user.setID && await classes[key].setSetInfo(user.setID).then(res => res?.success);
@@ -177,6 +181,47 @@ client.on("interactionCreate", async (interaction) => {
                 }).catch(() => false);
                 if (!i) interaction.editReply({
                     embeds: [new EmbedBuilder().setTitle("✅ 취소되었습니다.").setColor("Green")],
+                    components: []
+                }).catch(() => false);
+                return;
+            } else if (interaction.customId === "delete_info") {
+                let message: Message = await interaction.editReply({
+                    embeds: [new EmbedBuilder().setTitle("⚠️ 정말 저장된 정보를 삭제하시겠습니까?").setColor("Yellow")], components: [
+                        {
+                            "type": 1,
+                            "components": [
+                                {
+                                    "type": 2,
+                                    "label": "네",
+                                    "style": 4,
+                                    "customId": "_yes"
+                                },
+                                {
+                                    "type": 2,
+                                    "label": "아니요",
+                                    "style": 1,
+                                    "customId": "_no"
+                                }
+                            ]
+                        }
+                    ]
+                }) as Message;
+                let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
+                    if (inter.customId !== "_yes") return false;
+                    user.setID = 0;
+                    user.classID = 0;
+                    delete classes[interaction.user.id];
+                    classes[interaction.user.id] = new ClassCard();
+                    saveUsers()
+                    updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
+                    return true;
+                }).catch(() => false);
+                if (!i) interaction.editReply({
+                    embeds: [new EmbedBuilder().setTitle("✅ 취소되었습니다.").setColor("Green")],
+                    components: []
+                }).catch(() => false);
+                else interaction.editReply({
+                    embeds: [new EmbedBuilder().setTitle("✅ 정보가 삭제되었습니다.").setColor("Green")],
                     components: []
                 }).catch(() => false);
                 return;
@@ -776,6 +821,13 @@ async function updateMessage(message: any, userID: string, s: string): Promise<M
                     "style": 4,
                     "customId": "delete_channel",
                     "disabled": false
+                },
+                {
+                    "type": 2,
+                    "label": "정보 삭제하기",
+                    "style": 4,
+                    "customId": "delete_info",
+                    "disabled": disableMode === "idPass"
                 }
             ]
         });
@@ -824,7 +876,7 @@ async function updateMessage(message: any, userID: string, s: string): Promise<M
             };
             embeds.push(embed)
         };
-        return message[s]({
+        return message && message[s]({
             "content": `<@${userID}>`,
             "embeds": embeds,
             "components": components
