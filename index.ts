@@ -69,13 +69,16 @@ await Promise.all(Object.keys(users).map(async key => {
     try {
         let user = users[key];
         if (!classes[key]) classes[key] = new ClassCard();
-        if (user.id && user.password) {
+        if (decrypt(user.id) && decrypt(user.password)) {
             classes[key].login(decrypt(user.id), decrypt(user.password));
             let res = await classes[key].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success);
             if (!res) {
                 user.id = "";
                 user.password = "";
             };
+        } else {
+            user.id = "";
+            user.password = "";
         };
         if (user.setID) {
             let res = user.setID && await classes[key].setSetInfo(user.setID).then(res => res?.success);
@@ -298,6 +301,7 @@ client.on("interactionCreate", async (interaction) => {
                 });
             } else if (["s_memorize", "s_recall", "s_spell"].includes(interaction.customId)) {
                 let result = await classes[interaction.user.id].sendLearnAll(learningType[((interaction.customId === "s_memorize" ? "암기" : interaction.customId === "s_recall" ? "리콜" : "스펠") + "학습") as "암기학습" | "리콜학습" | "스펠학습"]);
+                updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                 if (!result || !result.success) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
                     return;
@@ -316,7 +320,6 @@ client.on("interactionCreate", async (interaction) => {
                         }
                     ]).setColor("Green")]
                 });
-                updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
             } else if (["s_match_scramble", "s_crash"].includes(interaction.customId)) {
                 await interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❓ 원하는 점수를 입력해주세요.").setColor("Yellow")] });
                 let collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
@@ -355,12 +358,12 @@ client.on("interactionCreate", async (interaction) => {
                 interaction.editReply({ embeds: [embed] });
             } else if (interaction.customId === "s_test") {
                 let result = await classes[interaction.user.id].postTest();
+                updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                 if (!result || !result.success) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
                     return;
                 };
                 interaction.editReply({ embeds: [new EmbedBuilder().setTitle("✅ 성공.").setDescription(result.message || "100점").setColor("Green")] });
-                updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
             } else if (interaction.customId === "_quiz_battle") {
                 interaction.deferUpdate();
                 if (qbClasses[interaction.user.id]) {
@@ -409,15 +412,15 @@ client.on("interactionCreate", async (interaction) => {
                 });
                 quizBattle.on("start", async () => {
                     try {
+                        var next: typeof QuizBattle.prototype.battleInfo.quest_list[0] = quizBattle.battleInfo.quest_list[0];
                         while (!end) {
-                            await sleep(1000);
                             let firstLine = {
                                 correct: String(quizBattle.correct) + "개",
                                 wrong: String(quizBattle.wrong) + "개",
                                 total: String(quizBattle.correct + quizBattle.wrong) + "개"
                             };
                             Object.keys(firstLine).forEach((key: string) => firstLine[key as "correct" | "wrong" | "total"] += Math.max(firstLine.correct.length, firstLine.wrong.length, firstLine.total.length) > firstLine[key as "correct" | "wrong" | "total"].length ? " ".repeat(Math.max(firstLine.correct.length, firstLine.wrong.length, firstLine.total.length) - firstLine[key as "correct" | "wrong" | "total"].length) : "");
-                            await message.edit({
+                            message.edit({
                                 "embeds": [new EmbedBuilder().setTitle("퀴즈배틀 실시간 경쟁").setDescription(`
                             전체: ${firstLine.total} 현재 점수: ${quizBattle.score}점
                             정답: ${firstLine.correct} 반 평균 점수: ${quizBattle.classAvg}점
@@ -427,14 +430,14 @@ client.on("interactionCreate", async (interaction) => {
                                     "type": 1,
                                     "components": [{
                                         "type": 2,
-                                        "label": `정답 처리(+${(100 * quizBattle.battleInfo.quest_list[quizBattle.b_quest_idx + 1].weight) || "unknown"}점)`,
+                                        "label": `정답 처리(+${(100 * next!.weight) || "unknown"}점)`,
                                         "style": 3,
-                                        "customId": "_quiz_battle_answer|correct|" + interaction.user.id
+                                        "customId": "_quiz_battle_answer|correct"
                                     }, {
                                         "type": 2,
                                         "label": "오답 처리(+0점)",
                                         "style": 4,
-                                        "customId": "_quiz_battle_answer|wrong|" + interaction.user.id
+                                        "customId": "_quiz_battle_answer|wrong"
                                     }]
                                 },
                                     // {
@@ -448,9 +451,18 @@ client.on("interactionCreate", async (interaction) => {
                                     // }
                                 ]
                             }).catch(() => end = true);
+                            await message.awaitMessageComponent({
+                                filter: (m) => m.user.id === interaction.user.id,
+                                time: 0,
+                                componentType: ComponentType.Button,
+                            }).then(async i => {
+                                next = (i.customId.endsWith("correct") ? quizBattle.mark(true) : quizBattle.mark(false)).nextQuestion;
+                                await i.deferUpdate();
+                            }).catch(() => end = true);
                         };
-                    } catch {
-
+                    } catch (e) {
+                        end = true;
+                        message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${e}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete().catch(() => false)), 10000)).catch(() => false);
                     };
                 });
                 quizBattle.on("end", () => {
@@ -468,15 +480,15 @@ client.on("interactionCreate", async (interaction) => {
                 interaction.deferUpdate();
                 let message = await interaction.channel!.send({
                     "embeds": [new EmbedBuilder().setTitle("❓ 배틀코드를 입력해주세요.").setColor("Yellow")],
-                    "components": [{
-                        "type": 1,
-                        "components": [{
-                            "type": 2,
-                            "label": "🗑️ 메세지 지우기",
-                            "style": 4,
-                            "customId": "_delete_message|" + interaction.user.id
-                        }]
-                    }]
+                    // "components": [{
+                    //     "type": 1,
+                    //     "components": [{
+                    //         "type": 2,
+                    //         "label": "🗑️ 메세지 지우기",
+                    //         "style": 4,
+                    //         "customId": "_delete_message|" + interaction.user.id
+                    //     }]
+                    // }]
                 });
                 let collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
@@ -487,6 +499,15 @@ client.on("interactionCreate", async (interaction) => {
                 if (!collected || !collected.first()) return;
                 collected.first()?.delete().catch(() => false);
                 let battleCode = Number(collected.first()?.content);
+                await message.edit({ "embeds": [new EmbedBuilder().setTitle("❓ 표시될 이름을 입력해주세요.").setColor("Yellow")] });
+                collected = await channel.awaitMessages({
+                    filter: (m) => m.author.id === interaction.user.id,
+                    time: 30000,
+                    max: 1,
+                    errors: ["time"]
+                }).catch(() => message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete().catch(() => false)), 10000)).then(() => false));
+                if (!collected || !collected.first()) return;
+                collected.first()?.delete().catch(() => false);
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 잠시만 기다려주세요.").setColor("Aqua")] });
                 let quizBattle = new QuizBattle(battleCode);
                 quizBattle.on("error", (error: string) => {
@@ -506,7 +527,7 @@ client.on("interactionCreate", async (interaction) => {
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 웹소켓 연결 중...").setColor("Aqua")] });
                 await quizBattle.init();
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 접속 중...").setColor("Aqua")] });
-                await quizBattle.join(String("<script>location.reload()</script>"));
+                await quizBattle.join("<script>location.reload()</script>" + collected.first()?.content);
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 배틀 시작을 기다리는 중입니다.").setColor("Aqua")] });
             } else if (interaction.customId.startsWith("_delete_message")) {
                 if (interaction.customId.split("|")[1] != interaction.user.id) {
@@ -519,13 +540,6 @@ client.on("interactionCreate", async (interaction) => {
                 //     delete qbClasses[interaction.user.id];
                 // };
                 (interaction.message as Message).delete();
-            } else if (interaction.customId.startsWith("_quiz_battle_answer")) {
-                if (interaction.customId.split("|")[2] != interaction.user.id || !qbClasses[interaction.user.id]) {
-                    interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ 잘못된 접근입니다.").setColor("Red")], ephemeral: true });
-                    return;
-                };
-                qbClasses[interaction.user.id].mark(interaction.customId.split("|")[1] === "correct");
-                interaction.deferUpdate();
             };
         } else if (interaction.isModalSubmit()) {
             if (interaction.customId === "_set_id_pass") {
@@ -645,7 +659,7 @@ function decrypt(text: string): string {
 async function updateMessage(message: any, userID: string, s: string): Promise<Message | undefined> {
     try {
         let disableMode = "";
-        !users[userID].setID && (disableMode = "set");
+        (!classes[userID].set.id || !classes[userID].class.id) && (disableMode = "set");
         (!users[userID].id || !users[userID].password) && (disableMode = "idPass");
         let disabled = disableMode === "idPass" || disableMode === "set";
         let components = [
@@ -765,13 +779,16 @@ async function updateMessage(message: any, userID: string, s: string): Promise<M
                 }
             ]
         });
-        var embeds: EmbedBuilder[] = [new EmbedBuilder()
-            .setTitle(disableMode === "idPass" ? "아이디와 비밀번호를 설정해주세요." : disableMode === "set" ? "세트를 설정해주세요." : "원하는 메뉴를 선택해주세요.")
-            .setColor(!disableMode ? "Green" : "Yellow")
-        ];
+        var embeds: EmbedBuilder[] = [];
+        var embed = new EmbedBuilder()
+            .setColor(!disableMode ? "Green" : "Yellow");
+        if (disableMode === "idPass") embed.setTitle("아이디/비번을 설정해주세요.");
+        else if (disableMode === "set") embed.setTitle((classes[userID].set.id && !classes[userID].class.id) ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요." : "세트를 설정해주세요.");
+        else embed.setTitle("원하는 메뉴를 선택해주세요.");
+        embeds.push(embed);
         if (disableMode !== "idPass" && disableMode !== "set") {
             let total = await classes[userID].getTotal();
-            let embed = new EmbedBuilder()
+            var embed = new EmbedBuilder()
                 .setTitle(classes[userID].set.name + "(" + classes[userID].set.id.toString() + ")")
                 .addFields([
                     {
@@ -785,8 +802,8 @@ async function updateMessage(message: any, userID: string, s: string): Promise<M
                         "inline": true
                     },
                     {
-                        "name": "​",
-                        "value": "​",
+                        "name": "클래스 정보",
+                        "value": `${classes[userID].class.name}(${classes[userID].class.id})`,
                         "inline": true
                     }
                 ])
