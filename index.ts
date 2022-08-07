@@ -208,11 +208,13 @@ client.on("interactionCreate", async (interaction) => {
                 }) as Message;
                 let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
                     if (inter.customId !== "_yes") return false;
+                    user.id = "";
+                    user.password = "";
                     user.setID = 0;
                     user.classID = 0;
                     delete classes[interaction.user.id];
                     classes[interaction.user.id] = new ClassCard();
-                    saveUsers()
+                    saveUsers();
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     return true;
                 }).catch(() => false);
