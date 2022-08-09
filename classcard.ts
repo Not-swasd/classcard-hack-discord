@@ -659,7 +659,8 @@ export class QuizBattle extends EventEmitter {
         quest: { card_idx: string, score: number, correct_yn: number }[]
     };
     b_quest_idx: number;
-    constructor(battleID: number) {
+    bp: boolean;
+    constructor(battleID: number, bp: boolean = false) {
         super();
         this.battleID = battleID;
         this.score = 1000;
@@ -676,6 +677,7 @@ export class QuizBattle extends EventEmitter {
             quest: []
         };
         this.b_quest_idx = 0;
+        this.bp = bp;
     };
 
     init(): Promise<boolean> {
@@ -815,7 +817,7 @@ export class QuizBattle extends EventEmitter {
             };
         };
         if (data.cmd === "b_join" && data.result === "ok") {
-            if (data.b_mode === 2 || data.set_type === 5) {
+            if ((data.b_mode === 2 || data.set_type === 5) && !this.bp) {
                 this.emit("error", "이 배틀 형식은 지원하지 않습니다. (2)");
                 return;
             };

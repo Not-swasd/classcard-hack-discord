@@ -556,7 +556,7 @@ client.on("interactionCreate", async (interaction) => {
                 if (!collected || !collected.first()) return;
                 collected.first()?.delete().catch(() => false);
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 잠시만 기다려주세요.").setColor("Aqua")] });
-                let quizBattle = new QuizBattle(battleCode);
+                let quizBattle = new QuizBattle(battleCode, true);
                 quizBattle.on("error", (error: string) => {
                     message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${error}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete().catch(() => false)), 10000)).catch(() => false);
                     quizBattle.leave();
