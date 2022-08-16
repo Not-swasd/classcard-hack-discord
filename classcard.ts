@@ -90,7 +90,7 @@ export default class ClassCard {
                 "id": id,
                 "pw": password
             }));
-            if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (0)");
+            if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("아이디 또는 비밀번호를 확인해주세요. (0)");
             this.user.isTeacher = res.data.res_data.user_type === 1;
             this.user.name = res.data.res_data.name;
             this.user.id = res.data.res_data.user_idx;
@@ -265,7 +265,7 @@ export default class ClassCard {
         try {
             var res: AxiosResponse | false = await this.client.get(`https://${n}.classcard.net/api/sets/info?set_idx=${setId}`).catch(() => false); // 비공개 세트도 접속 가능
             if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (0)");
-            if (res.data.res_data.open_yn !== "1") throw new Error("이 세트는 비공개 세트입니다. (1)");
+            if (res.data.res_data.deleted !== "0") throw new Error("이 세트는 삭제된 세트입니다. (1)");
             var study_data: any = await this.client.get(`https://${n}.classcard.net/api/sets/cards?set_idx=${setId}`).then(res => res.data.res_data.cards).catch(() => false);
             if (!study_data) throw new Error("알 수 없는 오류가 발생했습니다. (2)");
             study_data.forEach((x: any) => Object.keys(x).forEach((key: any) => key !== "card_idx" ? delete x[key] : x[key] = Number(x[key])));
