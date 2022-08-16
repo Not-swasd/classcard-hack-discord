@@ -5,6 +5,7 @@
   "main": "index.ts",
   "scripts": {
     "start": "tsc --project tsconfig.json && node index.js",
+    "compile": "tsc --project tsconfig.json",
     "test": "tsc --project tsconfig.json && node test.js"
   },
   "keywords": [],
