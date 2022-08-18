@@ -85,11 +85,11 @@ await Promise.all(Object.keys(users).map(async key => {
             user.classID = 0;
         };
         if (user.setID) {
-            let res = user.setID && await classes[key].setSetInfo(user.setID).then(res => res?.success);
+            let res = user.setID && await classes[key].setSet(user.setID).then(res => res?.success);
             if (!res) user.setID = 0;
         };
         if (user.classID) {
-            let res = user.classID && await classes[key].setClassInfo(user.classID).then(res => res?.success);
+            let res = user.classID && await classes[key].setClass(user.classID).then(res => res?.success);
             if (!res) user.classID = 0;
         };
         saveUsers()
@@ -99,7 +99,7 @@ await Promise.all(Object.keys(users).map(async key => {
             if (!guild) return;
             let channel = guild?.channels.cache.get(user.channelID) as TextChannel;
             if (!channel) return;
-            let message = await channel.messages.fetch(user.messageID).catch(() => false);
+            let message: Message | undefined = await channel.messages.fetch(user.messageID).catch(() => undefined);
             if (!message) {
                 channel.delete();
                 user.channelID = "";
@@ -282,20 +282,21 @@ client.on("interactionCreate", async (interaction) => {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (foldersResult?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
                     return;
                 };
-                let folders: { id: number, name: string, isFolder?: boolean }[] = [];
+                let folders: { id: number, name: string, isFolder?: boolean }[] = []; //, isFolder?: boolean
                 foldersResult.data?.forEach(f => folders.push({ //Object.keys(foldersResult.data!).for~
                     id: f.id,
                     name: f.name,
                     isFolder: true
                 }));
-                let classesResult = await classes[interaction.user.id].getClasses();
-                if (!classesResult || !classesResult.success) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (classesResult?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
+                let result = await classes[interaction.user.id].getClasses();
+                if (!result || !result.success) {
+                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
                     return;
                 };
-                folders = [...classesResult.data!, ...folders];
+                // folders = result.data! || [];
+                folders = [...result.data || [], ...folders || []];
                 let message: Message = await interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle("❓ 가져올 폴더나 클래스를 선택해주세요.").setColor("Yellow")],
+                    embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 폴더나 클래스를 선택해주세요.").setColor("Yellow")], //폴더나 클래스
                     components: [
                         {
                             "type": 1,
@@ -306,15 +307,11 @@ client.on("interactionCreate", async (interaction) => {
                                     "options": folders.map(f => {
                                         return {
                                             "label": f.name,
-                                            "value": String(f.isFolder ? f.name : f.id),
-                                            "description": (f.isFolder ? "폴더" : "클래스"),
-                                            // "emoji": {
-                                            //     "name": "",
-                                            //     "id": ""
-                                            // }
+                                            "value": String(f.isFolder ? f.name : f.id), //f.id
+                                            "description": (f.isFolder ? "폴더" : "클래스") //클래스
                                         };
                                     }),
-                                    "placeholder": "폴더나 클래스를 선택해주세요.",
+                                    "placeholder": "폴더나 클래스를 선택해주세요.", //폴더나 클래스
                                     "minValues": 1,
                                     "maxValues": 1
                                 }
@@ -328,7 +325,7 @@ client.on("interactionCreate", async (interaction) => {
                     return;
                 };
                 if (/[0-9]/.test(i)) {
-                    await classes[interaction.user.id].setClassInfo(Number(i));
+                    await classes[interaction.user.id].setClass(Number(i));
                     user.classID = Number(i);
                     saveUsers();
                 } else {
@@ -336,14 +333,17 @@ client.on("interactionCreate", async (interaction) => {
                     classes[interaction.user.id].class.name = "";
                     user.classID = 0;
                 };
-                let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i, /[0-9]/.test(i) ? Number(i) : 0);
+                let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i as "이용한 세트" | "만든 세트", /[0-9]/.test(i) ? Number(i) : 0);
                 if (!setsResult || !setsResult.success || !setsResult.data) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (setsResult?.message || "알 수 없는 오류입니다.")).setColor("Red")], components: [] });
                     return;
                 };
+                updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                 let sets = setsResult.data;
+                var description = sets.length < 1 ? `이 ${/[0-9]/.test(i) ? "클래스" : "폴더"}에 세트가 하나도 없습니다.` : "\`세트 이름\` [세트 아이디]\n\n" + sets.map(s => `\`${s.name}\` [${s.id}]`).join("\n");
+                if (description.length > 3800) description = "세트가 너무 많아서 다 표시할 수 없습니다. 수동으로 가져와주세요.\n클래스 -> 세트 -> 오른쪽 위에 있는 ... -> 세트공유를 누르고 url에서 ~~.net/set/ 이 뒤에 있는 숫자가 세트 아이디입니다.";
                 interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle(`✅ **${/[0-9]/.test(i) ? folders.find(x => x.id === Number(i))?.name : i}**에 있는 세트 목록`).setColor("Green").setDescription(sets.length < 1 ? `이 ${/[0-9]/.test(i) ? "클래스" : "폴더"}에 세트가 하나도 없습니다.` : "\`세트 이름\` [**세트 아이디**]\n\n" + sets.map(s => `\`${s.name}\` [**${s.id}**]`).join("\n"))],
+                    embeds: [new EmbedBuilder().setTitle(`✅ **${/[0-9]/.test(i) ? folders.find(x => x.id === Number(i))?.name : i}**에 있는 세트 목록`).setColor("Green").setDescription(description)],
                     components: []
                 });
             } else if (["s_memorize", "s_recall", "s_spell"].includes(interaction.customId)) {
@@ -587,12 +587,15 @@ client.on("interactionCreate", async (interaction) => {
                 //     delete qbClasses[interaction.user.id];
                 // };
                 (interaction.message as Message).delete();
+            } else if (interaction.customId === "_update_message") {
+                await updateMessage(interaction.message as Message, interaction.user.id, "edit");
+                interaction.deferUpdate();
             };
         } else if (interaction.isModalSubmit()) {
             if (interaction.customId === "_set_id_pass") {
                 const id = interaction.fields.getTextInputValue("id");
                 const password = interaction.fields.getTextInputValue("password");
-                if (!classes[interaction.user.id]) classes[interaction.user.id] = new ClassCard();
+                classes[interaction.user.id] = new ClassCard();
                 let loginResult = await classes[interaction.user.id].login(id, password);
                 if (loginResult?.success) {
                     user.id = encrypt(id);
@@ -607,7 +610,7 @@ client.on("interactionCreate", async (interaction) => {
                 };
             } else if (interaction.customId === "_set_set") {
                 let setID = Number(interaction.fields.getTextInputValue("set_id"));
-                let result = await classes[interaction.user.id].setSetInfo(setID);
+                let result = await classes[interaction.user.id].setSet(setID);
                 if (result && result?.success) {
                     user.setID = setID;
                     saveUsers()
@@ -703,7 +706,7 @@ function decrypt(text: string): string {
     };
 };
 
-async function updateMessage(message: any, userID: string, s: string): Promise<Message | undefined> {
+async function updateMessage(message: any, userID: string, s: "send" | "edit"): Promise<Message<boolean> | undefined> {
     try {
         let disableMode = "";
         (!classes[userID].set.id || !classes[userID].class.id) && (disableMode = "set");
@@ -806,13 +809,22 @@ async function updateMessage(message: any, userID: string, s: string): Promise<M
         };
         if (disableMode !== "idPass") components.push({
             "type": 1,
-            "components": [{
-                "type": 2,
-                "label": "세트 목록 가져오기",
-                "style": 3,
-                "customId": "get_sets",
-                "disabled": false
-            }]
+            "components": [
+                {
+                    "type": 2,
+                    "label": "세트 목록 가져오기",
+                    "style": 3,
+                    "customId": "get_sets",
+                    "disabled": false
+                },
+                {
+                    "type": 2,
+                    "label": "정보 업데이트",
+                    "style": 3,
+                    "customId": "_update_message",
+                    "disabled": false
+                }
+            ]
         });
         components.push({
             "type": 1,
