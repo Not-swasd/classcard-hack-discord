@@ -17,8 +17,8 @@
 
 ## 📄 사용법
 기본적으로 디스코드 봇 만드는 방법은 아실거라 생각합니다.
-1. `npm install`을 실행합니다.
-2. `npm run compile`을 실행합니다.
+1. `yarn`을 실행합니다.
+2. `yarn run compile`을 실행합니다.
 3. `node index.js`를 실행 후 생성된 config.json 파일 수정합니다.
 4. `node index.js`를 실행합니다.
 5. 봇을 디스코드 서버에 초대합니다.
