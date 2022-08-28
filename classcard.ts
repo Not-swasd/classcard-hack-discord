@@ -789,7 +789,7 @@ export class QuizBattle extends EventEmitter {
             is_auto: false,
             major_ver: 8,
             minor_ver: 0,
-            platform: "Windows 10",
+            platform: "Android",
             user_name: this.userName,
         });
         while (!this.joined) await sleep(500);
@@ -840,7 +840,7 @@ export class QuizBattle extends EventEmitter {
                 is_auto: false,
                 major_ver: 8,
                 minor_ver: 0,
-                platform: "Windows 10",
+                platform: "Android",
                 user_name: this.userName,
             });
         };
