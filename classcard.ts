@@ -3,6 +3,32 @@ import Websocket from "ws";
 import EventEmitter from "events";
 import { URLSearchParams } from "url";
 
+type Folder = {
+    "id": number,
+    "name": string,
+    "default": boolean
+};
+
+type Class = {
+    id: number,
+    name: string
+};
+
+type User = {
+    name: string,
+    id: number,
+    token: string,
+    isPro: boolean,
+    isTeacher: boolean
+};
+
+type Set = {
+    id: number,
+    name: string,
+    type: number,
+    study_data: { "card_idx": number }[]
+};
+
 enum setType {
     "word" = 1, //단어
     "term", //용어
@@ -12,15 +38,14 @@ enum setType {
     "listen", //듣기
     "answer" //정답
 };
+
 enum learningType {
     "암기학습" = "Memorize",
     "리콜학습" = "Recall",
     "스펠학습" = "Spell"
 };
+
 enum Activity {
-    "암기학습" = 1,
-    "리콜학습",
-    "스펠학습",
     "Memorize" = 1,
     "Recall",
     "Spell",
@@ -28,40 +53,16 @@ enum Activity {
     "스크램블" = 4,
     "크래시",
 };
-const stg = false;
-const n = stg ? "stg" : "mobile";
+
+const n = "mobile"; //"stg";
 
 export default class ClassCard {
     private client: Axios;
-    public set: {
-        id: number,
-        name: string,
-        type: number,
-        study_data: { "card_idx": number }[]
-    };
-    public class: {
-        id: number,
-        name: string
-    };
-    public user: {
-        name: string,
-        id: number,
-        token: string,
-        isPro: boolean,
-        isTeacher: boolean
-    };
-    public folders: {
-        "id": number,
-        "name": string,
-        path: string,
-        "default": boolean
-    }[];
-    public classes: {
-        id: number,
-        name: string
-    }[];
+    public set: Set;
+    public class: Class;
+    public user: User;
     constructor() {
-        this.client = axios.create({ headers: { "user-agent": "Class Card/1.0.314 (iPhone; iOS 16.0.0; Scale/2.0) Alamofire/1.0.314" } });
+        this.client = axios.create({ headers: { "user-agent": "Class Card/1.0.315 (iPhone; iOS 16.0.0; Scale/2.0) Alamofire/1.0.315" } });
         this.set = {
             id: 0,
             name: "",
@@ -79,8 +80,6 @@ export default class ClassCard {
             isPro: false,
             isTeacher: false,
         };
-        this.folders = [];
-        this.classes = [];
     };
 
     async login(id: string, password: string) {
@@ -90,7 +89,7 @@ export default class ClassCard {
                 "id": id,
                 "pw": password
             }));
-            if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("아이디 또는 비밀번호를 확인해주세요. (0)");
+            if (res.data.result.code !== 200) throw new Error("아이디 또는 비밀번호를 확인해주세요. (0)");
             this.user.isTeacher = res.data.res_data.user_type === 1;
             this.user.name = res.data.res_data.name;
             this.user.id = res.data.res_data.user_idx;
@@ -98,7 +97,6 @@ export default class ClassCard {
             this.user.token = res.data.res_data.token;
             this.client.defaults.headers.common["Authorization"] = this.user.id + " " + this.user.token;
             this.client.defaults.headers.common["user-agent"] += " u_idx:" + this.user.id;
-            await this.getFolders();
             return {
                 success: true,
                 message: "로그인 성공",
@@ -116,67 +114,51 @@ export default class ClassCard {
         };
     };
 
-    async sendLearnAll(type: learningType, percentageCheck: boolean = true) {
+    async sendLearnAll(activity: Activity) {
         try {
             if (!this.set.id || !this.class.id) throw new Error("세트 아이디 또는 클래스 아이디를 설정해야합니다. (0)");
-            let activity = 0;
-            if (type === learningType["암기학습"]) {
-                activity = 1;
-            } else if (type === learningType["리콜학습"]) {
-                activity = 2;
-            } else if (type === learningType["스펠학습"]) {
-                activity = 3;
-            } else {
-                throw new Error("알 수 없는 학습 타입입니다. (1)");
-            };
+            if (![1, 2, 3].includes(activity)) throw new Error("알 수 없는 학습 유형입니다. (1)");
             let before: number;
             let after: number;
-            let tryCount = 0;
-            while (true) {
-                before = percentageCheck ? await this.getTotal().then(t => t!.data![type] || 0) : 0;
-                // console.log(before, "bef");
-                let params = new URLSearchParams();
-                let ts = ClassCard.getTimestamp(Date.now());
-                let p = {
-                    "base_info": {
-                        "s_ts": ts,
-                        "set_idx": "",
-                        "user_idx": this.user.id
-                    },
-                    "req_data": {
-                        "fm_user_card_log": [{
-                            "activity": activity,
-                            "card_idx": -1,
-                            "class_idx": this.class.id,
-                            "deleted": 0,
-                            "score": (Math.floor(before / 100) + 1),
-                            "set_idx": this.set.id,
-                            "ts": ts,
-                            "user_idx": this.user.id
-                        }],
-                        "fm_user_class_learn_set": [],
-                        "fm_user_play_score": [],
-                        "fm_user_set_log": []
-                    }
-                };
-                for (const card of this.set.study_data) p.req_data.fm_user_card_log.push({
-                    "activity": activity,
-                    "card_idx": card.card_idx,
-                    "class_idx": this.class.id,
-                    "deleted": 1,
-                    "score": 1,
-                    "set_idx": this.set.id as number,
-                    "ts": ts,
+            before = await this.getTotal().then(t => t?.data![Activity[activity] as "Memorize" | "Recall" | "Spell"] || 0);
+            // console.log(before, "bef");
+            let params = new URLSearchParams();
+            let ts = ClassCard.getTimestamp(Date.now());
+            let p = {
+                "base_info": {
+                    "s_ts": ts,
+                    "set_idx": "",
                     "user_idx": this.user.id
-                });
-                params.append("p", JSON.stringify(p));
-                await this.client.post(`https://${n}.classcard.net/sync/upsync_user_study_log`, params).catch(() => false);
-                after = percentageCheck ? await this.getTotal().then(t => t!.data![type] || 1) : 0;
-                // console.log(after, "aft");
-                if (!percentageCheck || (after > before)) break;
-                tryCount++
-                if (tryCount > 1) throw new Error("알 수 없는 오류가 발생했습니다. (3)");
+                },
+                "req_data": {
+                    "fm_user_card_log": [{
+                        "activity": activity,
+                        "card_idx": -1,
+                        "class_idx": this.class.id,
+                        "deleted": 0,
+                        "score": (Math.floor(before / 100) + 1),
+                        "set_idx": this.set.id,
+                        "ts": ts,
+                        "user_idx": this.user.id
+                    }],
+                    "fm_user_class_learn_set": [],
+                    "fm_user_play_score": [],
+                    "fm_user_set_log": []
+                }
             };
+            for (const card of this.set.study_data) p.req_data.fm_user_card_log.push({
+                "activity": activity,
+                "card_idx": card.card_idx,
+                "class_idx": this.class.id,
+                "deleted": 1,
+                "score": 1,
+                "set_idx": this.set.id as number,
+                "ts": ts,
+                "user_idx": this.user.id
+            });
+            params.append("p", JSON.stringify(p));
+            await this.client.post(`https://${n}.classcard.net/sync/upsync_user_study_log`, params).catch(() => undefined);
+            after = await this.getTotal().then(t => t?.data![Activity[activity] as "Memorize" | "Recall" | "Spell"] || 1);
             return {
                 success: true,
                 message: "성공",
@@ -222,8 +204,8 @@ export default class ClassCard {
                     "fm_user_set_log": []
                 }
             }));
-            let res: AxiosResponse | false = await this.client.post(`https://${n}.classcard.net/sync/upsync_user_study_log`, params).catch(() => false);
-            if (!res || !res.data?.res_data || res.data.result.code !== 200 || res.data.res_data.fm_user_play_score != 1) throw new Error("알 수 없는 오류가 발생했습니다. (2)");
+            let res = await this.client.post(`https://${n}.classcard.net/sync/upsync_user_study_log`, params).catch(() => undefined);
+            if (res?.data?.result?.code !== 200 || res.data.res_data.fm_user_play_score != 1) throw new Error("알 수 없는 오류가 발생했습니다. (2)");
             let s_ts = res.data.result.s_ts;
             let rank: { [key: string]: string | number | null } = {
                 "class": null,
@@ -231,8 +213,8 @@ export default class ClassCard {
             };
             if (fetchRank) {
                 try {
-                    let res: AxiosResponse | false = await this.client.get(`https://${n}.classcard.net/api/sets/activity_rank_combine_v2?class_idx=${this.class.id}&set_idx=${this.set.id}&activity=${game}&current_score=${score}&limit=100`);
-                    if (!res || !res!.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (3)");
+                    let res = await this.client.get(`https://${n}.classcard.net/api/sets/activity_rank_combine_v2?class_idx=${this.class.id}&set_idx=${this.set.id}&activity=${game}&current_score=${score}&limit=100`);
+                    if (res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (3)");
                     for (const t of ["class", "all"]) {
                         let rankObj = res.data[t + "_rank_list"].find((x: any) => x.user_idx === String(this.user.id) && x.reg_date === s_ts);
                         if (!rankObj) rank[t] = t === "class" ? "오류" : "순위가 100등 보다 낮습니다.";
@@ -259,19 +241,21 @@ export default class ClassCard {
         };
     };
 
-    async getSetInfo(setId: number) {
+    async getSet(setId: number) {
         try {
-            var res: AxiosResponse | false = await this.client.get(`https://${n}.classcard.net/api/sets/info?set_idx=${setId}`).catch(() => false); // 비공개 세트도 접속 가능
-            if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (0)");
+            var res = await this.client.get(`https://${n}.classcard.net/api/sets/info?set_idx=${setId}`).catch(() => undefined); // 비공개 세트도 접속 가능
+            if (res?.data?.result?.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (0)");
             if (res.data.res_data.deleted !== "0") throw new Error("이 세트는 삭제된 세트입니다. (1)");
-            var study_data: any = await this.client.get(`https://${n}.classcard.net/api/sets/cards?set_idx=${setId}`).then(res => res.data.res_data.cards).catch(() => false);
-            if (!study_data) throw new Error("알 수 없는 오류가 발생했습니다. (2)");
-            study_data.forEach((x: any) => Object.keys(x).forEach((key: any) => key !== "card_idx" ? delete x[key] : x[key] = Number(x[key])));
-            let set: typeof this.set = {
+            var study_data: any = await this.client.get(`https://${n}.classcard.net/api/sets/cards?set_idx=${setId}`).then(res => res.data.res_data.cards).catch(() => undefined);
+            if (typeof study_data !== "object") throw new Error("알 수 없는 오류가 발생했습니다. (2)");
+            study_data.map((x: any) => {
+                return { card_idx: Number(x.card_idx) };
+            }).filter((x: any) => typeof x?.card_idx === "number");
+            let set: Set = {
                 id: setId,
                 name: res.data.res_data.name,
                 type: Number(res.data.res_data.set_type),
-                study_data: study_data
+                study_data
             };
             return { success: true, message: "", data: set };
         } catch (e) {
@@ -289,7 +273,7 @@ export default class ClassCard {
     async setSet(setId: number) {
         try {
             //api
-            let res = await this.getSetInfo(setId);
+            let res = await this.getSet(setId);
             if (!res!.success) throw new Error(res!.message + " (0)");
             this.set = res?.data!;
             return { success: true, message: "세트 정보가 설정되었습니다.", data: this.set };
@@ -305,12 +289,11 @@ export default class ClassCard {
         };
     };
 
-    async getClassInfo(classId: number) {
+    async getClass(classId: number) {
         try {
             let res = await this.getClasses();
-            if (!res!.success) throw new Error(res!.message + " (0)");
-            let classInfo = res!.data!.find(x => x.id === classId);
-            if (!classInfo) throw new Error("알 수 없는 오류가 발생했습니다. (1)");
+            let classInfo = res?.data?.find(x => x.id === classId);
+            if (!classInfo) throw new Error(res?.message || "알 수 없는 오류가 발생했습니다." + " (0)");
             return {
                 success: true,
                 message: "",
@@ -330,9 +313,9 @@ export default class ClassCard {
 
     async setClass(classId: number) {
         try {
-            let res = await this.getClassInfo(classId);
-            if (!res!.success) throw new Error(res!.message + " (0)");
-            this.class = res?.data!;
+            let res = await this.getClass(classId);
+            if (!res?.data) throw new Error(res!.message + " (0)");
+            this.class = res.data;
             return { success: true, message: "클래스 정보가 설정되었습니다.", data: this.set };
         } catch (e) {
             if (e instanceof Error) return {
@@ -361,12 +344,8 @@ export default class ClassCard {
                 Test: []
             };
             try {
-                if (this.class.id > 0) {
-                    let test_score_log: {
-                        score: string
-                    }[] = await this.client.get(`https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this.set.id}&class_idx=${this.class.id}`).then(res => res.data.res_data.test_score_log.reverse());
-                    data.Test = test_score_log.map(x => Number(x.score));
-                };
+                let test_score_log: { score: string }[] = await this.client.get(`https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this.set.id}&class_idx=${this.class.id}`).then(res => res.data.res_data.test_score_log.reverse());
+                data.Test = test_score_log.map(x => Number(x.score));
             } catch {
                 data.Test = [];
             };
@@ -389,7 +368,7 @@ export default class ClassCard {
                 "score": string,
                 "deleted": string,
                 "ts": string
-            }[] = await this.client.post(`https://${n}.classcard.net/sync/sync_card`, params).then(res => res.data.res_data.fm_user_card_log).catch(() => false);
+            }[] = await this.client.post(`https://${n}.classcard.net/sync/sync_card`, params).then(res => res.data.res_data.fm_user_card_log).catch(() => undefined);
             let done = sync_card.filter(c => c.score === "1" && c.deleted === "0" && c.card_idx !== "-1" && !!c.user_idx && !!c.set_idx && !!c.activity);
             for (var t of ["Memorize", "Recall", "Spell"]) {
                 let activity = String(Activity[t as keyof typeof Activity]);
@@ -403,7 +382,7 @@ export default class ClassCard {
             return {
                 success: true,
                 message: "성공",
-                data: data
+                data
             };
         } catch (e) {
             if (e instanceof Error) return {
@@ -435,21 +414,22 @@ export default class ClassCard {
                         "user_idx": this.user.id
                     }
                 }));
-                let res: AxiosResponse | false = await this.client.post(`https://${n}.classcard.net/sync/sync_set_class_v3`, params).catch(() => false);
-                if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("세트 목록을 가져올 수 없습니다. (1)");
+                let res = await this.client.post(`https://${n}.classcard.net/sync/sync_set_class_v3`, params).catch(() => undefined);
+                if (res?.data?.result?.code !== 200) throw new Error("세트 목록을 가져오는 중 오류가 발생했습니다. (1)");
                 let fm_set = (res.data.res_data.fm_set as { set_idx: string, user_idx: string, deleted: string, recent: boolean, name: string, is_wrong_answer: string, set_type: string }[]).map(set => {
                     set.recent = false;
                     if (((res as AxiosResponse).data.res_data.fm_user_set_log as { set_idx: string }[]).find(s => s.set_idx === set.set_idx)) set.recent = true;
                     return set;
                 });
-                sets = fm_set.filter(set => Number(set.set_idx) > 0 && set.is_wrong_answer === "0" && set.deleted === "0" && (folderName === "이용한 세트" ? set.recent : Number(set.user_idx) === this.user.id)).map(set => {
+                sets = fm_set.filter(set => Number(set.set_idx) > 0 && set.is_wrong_answer === "0" && set.deleted === "0" && (folderName === "이용한 세트" ? set.recent : Number(set.user_idx) == this.user.id)).map(set => {
                     return { id: Number(set.set_idx), name: set.name, type: Number(set.set_type) };
                 });
             } else {
-                let res: AxiosResponse | false = await this.client.get(folderName === "클래스" ? (`https://${n}.classcard.net/api/classes/sets_v4?class_idx=${classId}`) : `https://${n}.classcard.net/api/sets/folder_sets?sl_idx=${this.folders.find(f => f.name === folderName)?.id}&offset=1&limit=1000&ft=`).catch(() => false);
-                if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("세트 목록을 가져올 수 없습니다. (2)");
-                if (folderName === "클래스") await this.setClass(classId!).then(r => {
-                    if (!r!.success) throw new Error((r!.message || "알 수 없는 오류가 발생했습니다.") + " (3)");
+                var folders = await this.getFolders().then(r => r?.data || []);
+                let res = await this.client.get(folderName === "클래스" ? (`https://${n}.classcard.net/api/classes/sets_v4?class_idx=${classId}`) : `https://${n}.classcard.net/api/sets/folder_sets?sl_idx=${folders.find(f => f.name === folderName)?.id}&offset=1&limit=1000&ft=`).catch(() => undefined);
+                if (res?.data?.result?.code !== 200) throw new Error("세트 목록을 가져오는 중 오류가 발생했습니다. (2)");
+                if (folderName === "클래스" && classId) await this.setClass(classId).then(r => {
+                    if (!r?.success) throw new Error((r?.message || "알 수 없는 오류가 발생했습니다.") + " (3)");
                 });
                 sets = (res.data.res_data as { set_idx: string, name?: string, set_name?: string, set_type: string }[]).map(set => { return { id: Number(set.set_idx), name: set.name || set.set_name || "", type: Number(set.set_type) } });
             };
@@ -472,15 +452,14 @@ export default class ClassCard {
 
     async getClasses() {
         try {
-            let res: AxiosResponse | false = await this.client.get(`https://${n}.classcard.net/api/users/page?u_idx=${this.user.id}`).catch(() => false);
-            if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("클래스 목록을 가져올 수 없습니다.");
+            let res = await this.client.get(`https://${n}.classcard.net/api/users/page?u_idx=${this.user.id}`).catch(() => undefined);
+            if (res?.data?.result?.code !== 200) throw new Error("클래스 목록을 가져오는 중 오류가 발생했습니다.");
             let classes = (res.data.res_data.class as { class_idx: string, name: string }[]).map(c => {
                 return {
                     id: Number(c.class_idx),
                     name: c.name
                 };
             });
-            this.classes = classes;
             return {
                 success: true,
                 message: "성공",
@@ -500,23 +479,21 @@ export default class ClassCard {
 
     async getFolders() {
         try {
-            let res: AxiosResponse | false = await this.client.get(`https://${n}.classcard.net/api/sets/folders`).catch(() => false);
-            if (!res || !res.data?.res_data) throw new Error("폴더 목록을 가져올 수 없습니다. (0)");
-            let folders: typeof this.folders = [
+            let res = await this.client.get(`https://${n}.classcard.net/api/sets/folders`).catch(() => undefined);
+            if (!res?.data?.res_data) throw new Error("폴더 목록을 가져오는 중 오류가 발생했습니다. (0)");
+            let folders: Folder[] = [
                 {
                     "name": "이용한 세트",
                     "id": 0,
-                    "path": "/Main",
                     "default": true
                 },
                 {
                     "name": "만든 세트",
                     "id": 0,
-                    "path": "/make",
                     "default": true
                 }
             ]; //sl_
-            // if (this.user.isTeacher) folders.push({ "name": "구독중인 폴더", "id": 0, "path": "/Subscription", "default": true });
+            // if (this.user.isTeacher) folders.push({ "name": "구독중인 폴더", "id": 0, "default": true });
             res.data.res_data.forEach((i: {
                 "sl_idx": string,
                 "sl_order": string,
@@ -531,8 +508,7 @@ export default class ClassCard {
                 "order_type": string,
                 "cat": unknown,
                 "publisher": unknown
-            }) => i.sl_name && i.sl_idx && folders.push({ "name": i.sl_name, "id": Number(i.sl_idx), "path": "/folder/" + i.sl_idx, "default": false }));
-            this.folders = folders;
+            }) => i.sl_name && i.sl_idx && folders.push({ "name": i.sl_name, "id": Number(i.sl_idx), "default": false }));
             return {
                 success: true,
                 message: "성공",
@@ -553,18 +529,17 @@ export default class ClassCard {
     async postTest() {
         try {
             if (!this.set.id || !this.class.id) throw new Error("세트 아이디 또는 클래스 아이디를 설정해야합니다. (0)");
-
-            var res: AxiosResponse | false = await this.client.get(`https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this.set.id}&class_idx=${this.class.id}`).catch(() => false);
-            if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (1)");
+            var res = await this.client.get(`https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this.set.id}&class_idx=${this.class.id}`).catch(() => undefined);
+            if (res?.data?.result?.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (1)");
             var max_try_cnt = res.data.res_data.max_try_cnt === "0" ? 70 : Number(res.data.res_data.max_try_cnt);
             if (max_try_cnt <= res.data.res_data.test_score_log.length) throw new Error("이 테스트는 최대 " + max_try_cnt + "번 시도할 수 있습니다. (2)");
             let current = res.data.res_data.test_score_log.length + 1;
-            var res: AxiosResponse | false = await this.client.post(`https://${n}.classcard.net/api/classes/start_test_v3`, transformRequest({
+            var res = await this.client.post(`https://${n}.classcard.net/api/classes/start_test_v3`, transformRequest({
                 "class_idx": this.class.id,
                 "is_only_wrong": 0, //알 수 없음
                 "set_idx": this.set.id,
-            })).catch(() => false);
-            if (!res || res.data?.result!.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (3)");
+            })).catch(() => undefined);
+            if (res?.data?.result!.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (3)");
             let params = new URLSearchParams();
             params.append("class_idx", String(this.class.id));
             params.append("is_only_wrong", "0"); //알 수 없음
@@ -582,9 +557,8 @@ export default class ClassCard {
             params.append("score", "100");
             params.append("score_idx", res.data.res_data.score_idx);
             params.append("set_idx", String(this.set.id));
-            var res: AxiosResponse | false = await this.client.post(`https://${n}.classcard.net/api/classes/submit_test_v2`, params).catch(() => false);
-            if (!res || !res.data?.res_data || res.data.result.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (4)");
-            // console.log(res && res.data)
+            var res = await this.client.post(`https://${n}.classcard.net/api/classes/submit_test_v2`, params).catch(() => undefined);
+            if (res?.data?.result?.code !== 200) throw new Error("알 수 없는 오류가 발생했습니다. (4)");
             return {
                 success: true,
                 message: `${current}차 테스트 만점 제출 완료.`,
@@ -602,15 +576,15 @@ export default class ClassCard {
         };
     };
 
-    static getTimestamp(t?: number): string {
+    static getTimestamp(t?: number) {
         return `${new Date(t || Date.now()).getFullYear()}-${(new Date(t || Date.now()).getMonth() + 1).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getMonth() + 1}-${(new Date(t || Date.now()).getDate()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getDate()} ${(new Date(t || Date.now()).getHours()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getHours()}:${(new Date(t || Date.now()).getMinutes()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getMinutes()}:${(new Date(t || Date.now()).getSeconds()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getSeconds()}`;
     };
 };
 
 export class QuizBattle extends EventEmitter {
     private ws!: Websocket.WebSocket;
-    battleID: number;
     private pongTimer!: NodeJS.Timeout;
+    battleID: number;
     battleInfo!: {
         b_mode: number,
         test_id: number,
@@ -716,13 +690,13 @@ export class QuizBattle extends EventEmitter {
         });
     };
 
-    sendMessage(message: string | Object): void {
+    sendMessage(message: string | Object) {
         if (this.ws.readyState === this.ws.CLOSED || this.ws.readyState === this.ws.CLOSING || this.ws.readyState === this.ws.CONNECTING) return;
         this.ws.send(typeof message === "object" ? JSON.stringify(message) : message);
         this.#sendPong();
     };
 
-    #sendPong(): void {
+    #sendPong() {
         if (this.pongTimer) clearTimeout(this.pongTimer);
         this.pongTimer = setTimeout(() => this.sendMessage({ cmd: 'pong' }), 10000);
     };
@@ -796,7 +770,7 @@ export class QuizBattle extends EventEmitter {
         return true;
     };
 
-    leave(): boolean {
+    leave() {
         if (this.ws.readyState !== this.ws.OPEN) return false;
         this.ws.close();
         return true;
@@ -867,7 +841,7 @@ export class QuizBattle extends EventEmitter {
         };
     };
 
-    makeQuest(): void { //클래스카드에서 가져옴. 코드 정리 한거임. 더 하기 귀찮ㅇ...
+    makeQuest() { //클래스카드에서 가져옴. 코드 정리 한거임. 더 하기 귀찮ㅇ...
         if (this.battleInfo.set_type == 5) return;
 
         var items = [];
@@ -1054,7 +1028,7 @@ export class QuizBattle extends EventEmitter {
         });
     };
 
-    static fy(a: Array<object>, b?: any, c?: any, d?: any): void { //클래스카드에서 가져옴.
+    static fy(a: Array<object>, b?: any, c?: any, d?: any) { //클래스카드에서 가져옴.
         c = a.length;
         while (c) b = Math.random() * (--c + 1) | 0, d = a[c], a[c] = a[b], a[b] = d
     };
@@ -1066,7 +1040,7 @@ export declare interface QuizBattle {
     on(event: "end", listener: () => void): this;
 };
 
-function transformRequest(jsonData: Object = {}): string {
+function transformRequest(jsonData: Object = {}) {
     return Object.entries(jsonData).map(x => `${encodeURIComponent(x[0])}=${encodeURIComponent(x[1])}`).join('&');
 };
 
@@ -1074,4 +1048,4 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 
-export { ClassCard, learningType, Activity, setType };
+export { ClassCard, learningType, Activity, setType, Folder, Class, User };

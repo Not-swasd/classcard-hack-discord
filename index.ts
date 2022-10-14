@@ -1,5 +1,5 @@
 import { CategoryChannel, Client, Collection, Message, TextChannel, EmbedBuilder, Partials, ComponentType, ChannelType } from "discord.js";
-import { Activity, ClassCard, learningType, QuizBattle, setType } from "./classcard.js";
+import { Activity, ClassCard, QuizBattle, setType } from "./classcard.js";
 import * as fs from "fs";
 import * as crypto from "crypto";
 
@@ -18,7 +18,7 @@ let config: {
     ticketCategory: string,
     ticketChannel: string
 } = JSON.parse(fs.readFileSync("./config.json", "utf8"));
-let secret: string = config.secret || randPassword(32);
+let secret: string = String(config.secret).length === 32 ? config.secret : randPassword(32);
 let users: {
     [key: string]: {
         id: string,
@@ -70,7 +70,6 @@ await Promise.all(Object.keys(users).map(async key => {
         let user = users[key];
         if (!classes[key]) classes[key] = new ClassCard();
         if (decrypt(user.id) && decrypt(user.password)) {
-            classes[key].login(decrypt(user.id), decrypt(user.password));
             let res = await classes[key].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success);
             if (!res) {
                 user.id = "";
@@ -122,7 +121,7 @@ client.on("ready", () => console.info("Logged in as " + client.user?.tag));
 client.on("interactionCreate", async (interaction) => {
     try {
         if (!users[interaction.user.id]) users[interaction.user.id] = { id: "", password: "", channelID: "", messageID: "", setID: 0, classID: 0 };
-        saveUsers()
+        saveUsers();
         let user = users[interaction.user.id];
         if (interaction.isButton()) {
             const channel = interaction.channel as TextChannel;
@@ -176,7 +175,7 @@ client.on("interactionCreate", async (interaction) => {
                     await channel.delete();
                     user.channelID = "";
                     user.messageID = "";
-                    saveUsers()
+                    saveUsers();
                     return true;
                 }).catch(() => false);
                 if (!i) interaction.editReply({
@@ -186,25 +185,23 @@ client.on("interactionCreate", async (interaction) => {
                 return;
             } else if (interaction.customId === "delete_info") {
                 let message: Message = await interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle("⚠️ 정말 저장된 정보를 삭제하시겠습니까?").setColor("Yellow")], components: [
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 2,
-                                    "label": "네",
-                                    "style": 4,
-                                    "customId": "_yes"
-                                },
-                                {
-                                    "type": 2,
-                                    "label": "아니요",
-                                    "style": 1,
-                                    "customId": "_no"
-                                }
-                            ]
-                        }
-                    ]
+                    embeds: [new EmbedBuilder().setTitle("⚠️ 정말 저장된 정보를 삭제하시겠습니까?").setColor("Yellow")], components: [{
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 2,
+                                "label": "네",
+                                "style": 4,
+                                "customId": "_yes"
+                            },
+                            {
+                                "type": 2,
+                                "label": "아니요",
+                                "style": 1,
+                                "customId": "_no"
+                            }
+                        ]
+                    }]
                 }) as Message;
                 let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
                     if (inter.customId !== "_yes") return false;
@@ -251,8 +248,8 @@ client.on("interactionCreate", async (interaction) => {
                             "customId": "password",
                             "label": "비밀번호",
                             "style": 1,
-                            "minLength": 5,
-                            "maxLength": 4000,
+                            "minLength": 1,
+                            "maxLength": 50,
                             "placeholder": "비밀번호",
                             "required": true
                         }]
@@ -297,27 +294,23 @@ client.on("interactionCreate", async (interaction) => {
                 folders = [...result.data || [], ...folders || []];
                 let message: Message = await interaction.editReply({
                     embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 폴더나 클래스를 선택해주세요.").setColor("Yellow")], //폴더나 클래스
-                    components: [
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 3,
-                                    "customId": "class_select_1",
-                                    "options": folders.map(f => {
-                                        return {
-                                            "label": f.name,
-                                            "value": String(f.isFolder ? f.name : f.id), //f.id
-                                            "description": (f.isFolder ? "폴더" : "클래스") //클래스
-                                        };
-                                    }),
-                                    "placeholder": "폴더나 클래스를 선택해주세요.", //폴더나 클래스
-                                    "minValues": 1,
-                                    "maxValues": 1
-                                }
-                            ]
-                        }
-                    ]
+                    components: [{
+                        "type": 1,
+                        "components": [{
+                            "type": 3,
+                            "customId": "class_select_1",
+                            "options": folders.map(f => {
+                                return {
+                                    "label": f.name,
+                                    "value": String(f.isFolder ? f.name : f.id), //f.id
+                                    "description": (f.isFolder ? "폴더" : "클래스") //클래스
+                                };
+                            }),
+                            "placeholder": "폴더나 클래스를 선택해주세요.", //폴더나 클래스
+                            "minValues": 1,
+                            "maxValues": 1
+                        }]
+                    }]
                 }) as Message;
                 let i: string | false = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.SelectMenu }).then((interaction) => interaction.values[0]).catch(() => false);
                 if (!i) {
@@ -328,10 +321,6 @@ client.on("interactionCreate", async (interaction) => {
                     await classes[interaction.user.id].setClass(Number(i));
                     user.classID = Number(i);
                     saveUsers();
-                } else {
-                    classes[interaction.user.id].class.id = -1;
-                    classes[interaction.user.id].class.name = "";
-                    user.classID = 0;
                 };
                 let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i as "이용한 세트" | "만든 세트", /[0-9]/.test(i) ? Number(i) : 0);
                 if (!setsResult || !setsResult.success || !setsResult.data) {
@@ -347,7 +336,7 @@ client.on("interactionCreate", async (interaction) => {
                     components: []
                 });
             } else if (["s_memorize", "s_recall", "s_spell"].includes(interaction.customId)) {
-                let result = await classes[interaction.user.id].sendLearnAll(learningType[((interaction.customId === "s_memorize" ? "암기" : interaction.customId === "s_recall" ? "리콜" : "스펠") + "학습") as "암기학습" | "리콜학습" | "스펠학습"]);
+                let result = await classes[interaction.user.id].sendLearnAll(Activity[(interaction.customId === "s_memorize" ? "Memorize" : interaction.customId === "s_recall" ? "Recall" : "Spell")]);
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                 if (!result || !result.success) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
@@ -588,7 +577,7 @@ client.on("interactionCreate", async (interaction) => {
                 // };
                 (interaction.message as Message).delete();
             } else if (interaction.customId === "_update_message") {
-                await updateMessage(interaction.message as Message, interaction.user.id, "edit");
+                await updateMessage(interaction.message as Message, interaction.user.id, "edit", true);
                 interaction.deferUpdate();
             };
         } else if (interaction.isModalSubmit()) {
@@ -648,19 +637,15 @@ client.on("messageCreate", async (message: Message) => {
                 fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
                 await channel.send({
                     "embeds": [new EmbedBuilder().setTitle("버튼을 눌러주세요.").setColor("Green")],
-                    "components": [
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 2,
-                                    "label": "채널 만들기",
-                                    "style": 3,
-                                    "customId": "create_ticket"
-                                }
-                            ]
-                        }
-                    ]
+                    "components": [{
+                        "type": 1,
+                        "components": [{
+                            "type": 2,
+                            "label": "채널 만들기",
+                            "style": 3,
+                            "customId": "create_ticket"
+                        }]
+                    }]
                 });
                 let replied = await message.reply("설정 성공.");
                 setTimeout(() => {
@@ -680,7 +665,7 @@ client.on("messageCreate", async (message: Message) => {
 
             if (cmd === "s") {
                 message.delete().catch(() => false);
-                secret = args[0];
+                args[0].length === 32 && (secret = args[0]);
             };
         }
     };
@@ -706,11 +691,11 @@ function decrypt(text: string): string {
     };
 };
 
-async function updateMessage(message: any, userID: string, s: "send" | "edit"): Promise<Message<boolean> | undefined> {
+async function updateMessage(message: any, userID: string, s: "send" | "edit", rf = false): Promise<Message<boolean> | undefined> {
     try {
         let disableMode = "";
-        (!classes[userID].set.id || !classes[userID].class.id) && (disableMode = "set");
-        (!users[userID].id || !users[userID].password) && (disableMode = "idPass");
+        if (!classes[userID].set.id || !classes[userID].class.id) disableMode = "set";
+        if (!users[userID].id || !users[userID].password) disableMode = "idPass";
         let disabled = disableMode === "idPass" || disableMode === "set";
         let components = [
             {
@@ -846,17 +831,44 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit"): 
             ]
         });
         var embeds: EmbedBuilder[] = [];
-        var embed = new EmbedBuilder()
-            .setColor(!disableMode ? "Green" : "Yellow");
+        var embed = new EmbedBuilder().setColor(!disableMode ? "Green" : "Yellow");
         if (disableMode === "idPass") embed.setTitle("아이디/비번을 설정해주세요.");
         else if (disableMode === "set") embed.setTitle((classes[userID].set.id && !classes[userID].class.id) ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요." : "세트를 설정해주세요.");
-        else embed.setTitle("원하는 메뉴를 선택해주세요.");
+        else {
+            if (rf) await classes[userID].login(decrypt(users[userID].id), decrypt(users[userID].password)).then((res) => {
+                if (!res!.success) {
+                    users[userID].id = "";
+                    users[userID].password = "";
+                    users[userID].setID = 0;
+                    users[userID].classID = 0;
+                    fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+                    classes[userID] = new ClassCard();
+                    updateMessage(message, userID, s, false);
+                    throw new Error("invalid id or password.");
+                };
+            });
+            embed.setTitle("계정 정보").addFields([{
+                "name": "이름",
+                "value": `**${classes[userID].user.name}**`,
+                "inline": true
+            }]);
+        };
         embeds.push(embed);
         if (disableMode !== "idPass" && disableMode !== "set") {
             let total = await classes[userID].getTotal();
             var embed = new EmbedBuilder()
-                .setTitle(classes[userID].set.name + "(" + classes[userID].set.id.toString() + ")")
+                .setTitle("세트/클래스 정보")
                 .addFields([
+                    {
+                        "name": "세트 이름[idx]",
+                        "value": `${classes[userID].set.name}[${classes[userID].set.id}]`,
+                        "inline": true
+                    },
+                    {
+                        "name": "클래스 이름",
+                        "value": `${classes[userID].class.name}`,
+                        "inline": true
+                    },
                     {
                         "name": "세트 종류",
                         "value": setType[classes[userID].set.type],
@@ -865,11 +877,6 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit"): 
                     {
                         "name": "카드 개수",
                         "value": String(classes[userID].set.study_data.length) + "개",
-                        "inline": true
-                    },
-                    {
-                        "name": "클래스 정보",
-                        "value": `${classes[userID].class.name}(${classes[userID].class.id})`,
                         "inline": true
                     }
                 ])
@@ -888,7 +895,7 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit"): 
                     }]);
                 };
             };
-            embeds.push(embed)
+            embeds.push(embed);
         };
         return message && message[s]({
             "content": `<@${userID}>`,
@@ -896,20 +903,20 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit"): 
             "components": components
         }).catch(() => false);
     } catch (e) {
-        console.log(e)
+
     };
 };
 
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-};
+// function sleep(ms: number): Promise<void> {
+//     return new Promise(resolve => setTimeout(resolve, ms));
+// };
 
 function saveUsers(): void {
     fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
 };
 
 //ExpressVPN security tools -> Password Generator URL: https://www.expressvpn.com/password-generator
-function randPassword(length: number = 32): string {
+function randPassword(length: number = 32) {
     let charsArray = ["abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "0123456789", "~!@#$%^&*()_+-={}|[]:<>?,./"];
     var i = "";
     var r = crypto.randomFillSync(new Uint32Array(length - charsArray.length));
@@ -920,7 +927,7 @@ function randPassword(length: number = 32): string {
         i = i.substring(0, ri) + e.charAt(getRandomIndex(e.length)) + i.substring(ri);
     })), i
 };
-function getRandomIndex(e: number): number {
+function getRandomIndex(e: number) {
     if (e < 0) return -1;
     var a = new Uint32Array(1);
     return crypto.randomFillSync(a), a[0] % e;
