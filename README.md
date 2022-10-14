@@ -1,6 +1,9 @@
 # 📗 Classcard Hack
 언어: [![Language](https://shields.io/badge/TypeScript-3178C6?logo=TypeScript&logoColor=FFF&style=flat-square)](https://www.typescriptlang.org/)<br>
-**:warning: 악용금지! 학습 목적으로만 사용해주세요.**
+**:warning: 악용금지! 학습 목적으로만 사용해주세요.**   
+
+## 기록(?)
+오늘은 2022년 10월 14일. 오랜만에 코드를 봤더니 상태가...ㅋㅋ
 
 ## 📙 설명
 * 클래스카드 자동화
