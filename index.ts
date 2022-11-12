@@ -30,8 +30,8 @@ let users: {
     }
 } = JSON.parse(fs.readFileSync("./users.json", "utf8"));
 
-let classes: { [key: string]: ClassCard } = {};
-let qbClasses: { [key: string]: QuizBattle } = {};
+let classes: { [id: string]: ClassCard } = {};
+let qbClasses: { [id: string]: QuizBattle } = {};
 
 const client: Client = new Client({
     "intents": [
@@ -65,12 +65,12 @@ const client: Client = new Client({
 });
 
 console.info("잠시만 기다려주세요.");
-await Promise.all(Object.keys(users).map(async key => {
+await Promise.all(Object.keys(users).map(async id => {
     try {
-        let user = users[key];
-        if (!classes[key]) classes[key] = new ClassCard();
+        let user = users[id];
+        if (!classes[id]) classes[id] = new ClassCard();
         if (decrypt(user.id) && decrypt(user.password)) {
-            let res = await classes[key].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success);
+            let res = await classes[id].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success);
             if (!res) {
                 user.id = "";
                 user.password = "";
@@ -83,30 +83,24 @@ await Promise.all(Object.keys(users).map(async key => {
             user.setID = 0;
             user.classID = 0;
         };
-        if (user.setID) {
-            let res = user.setID && await classes[key].setSet(user.setID).then(res => res?.success);
-            if (!res) user.setID = 0;
-        };
-        if (user.classID) {
-            let res = user.classID && await classes[key].setClass(user.classID).then(res => res?.success);
-            if (!res) user.classID = 0;
-        };
-        saveUsers()
+        if (user.setID && !(user.setID && await classes[id].setSet(user.setID).then(res => res?.success))) user.setID = 0;
+        if (user.classID && !(user.classID && await classes[id].setClass(user.classID).then(res => res?.success))) user.classID = 0;
+        saveUsers();
         if (user.channelID && user.messageID) client.once("ready", async () => {
             if (!user.channelID || !user.messageID) return;
             let guild = client.guilds.cache.get(config.guild)
             if (!guild) return;
-            let channel = guild?.channels.cache.get(user.channelID) as TextChannel;
+            let channel = guild.channels.cache.get(user.channelID) as TextChannel;
             if (!channel) return;
-            let message: Message | undefined = await channel.messages.fetch(user.messageID).catch(() => undefined);
+            let message = await channel.messages.fetch(user.messageID).catch(() => undefined);
             if (!message) {
                 channel.delete();
                 user.channelID = "";
                 user.messageID = "";
-                saveUsers()
+                saveUsers();
                 return;
             };
-            updateMessage(message, key, "edit");
+            updateMessage(message, id, "edit");
         });
     } catch { };
 }));
@@ -133,9 +127,16 @@ client.on("interactionCreate", async (interaction) => {
                 channel = await (interaction.guild?.channels.cache.get(config.ticketCategory) as CategoryChannel).children.create({ "name": interaction.user.username.toLowerCase() /* ＃${interaction.user.discriminator} */, "topic": "Created By " + client.user?.username + " | USER: " + interaction.user.id });
                 user.channelID = channel.id;
                 if (!classes[interaction.user.id]) classes[interaction.user.id] = new ClassCard();
-                let message: Message = await updateMessage(channel, interaction.user.id, "send") as Message;
+                let message = await updateMessage(channel, interaction.user.id, "send") as Message;
                 if (message.id) user.messageID = message.id;
-                saveUsers()
+                else {
+                    user.messageID = "";
+                    user.channelID = "";
+                    saveUsers();
+                    if (channel) channel.delete();
+                    return;
+                };
+                saveUsers();
                 await channel.permissionOverwrites.create(interaction.user, { "ViewChannel": true, "SendMessages": true });
                 interaction.editReply({ "embeds": [new EmbedBuilder().setTitle("✅ Success").setDescription(`설정이 완료되었습니다. 채널: <#${channel.id}>`).setColor("Green")] });
                 return;
@@ -149,7 +150,7 @@ client.on("interactionCreate", async (interaction) => {
                 return;
             };
             if (interaction.customId === "delete_channel") {
-                let message: Message = await interaction.editReply({
+                let message = await interaction.editReply({
                     embeds: [new EmbedBuilder().setTitle("⚠️ 정말 채널을 삭제하시겠습니까?").setColor("Yellow")], components: [
                         {
                             "type": 1,
@@ -185,7 +186,8 @@ client.on("interactionCreate", async (interaction) => {
                 return;
             } else if (interaction.customId === "delete_info") {
                 let message: Message = await interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle("⚠️ 정말 저장된 정보를 삭제하시겠습니까?").setColor("Yellow")], components: [{
+                    embeds: [new EmbedBuilder().setTitle("⚠️ 정말 저장된 정보를 삭제하시겠습니까?").setColor("Yellow")],
+                    components: [{
                         "type": 1,
                         "components": [
                             {
@@ -202,7 +204,7 @@ client.on("interactionCreate", async (interaction) => {
                             }
                         ]
                     }]
-                }) as Message;
+                });
                 let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
                     if (inter.customId !== "_yes") return false;
                     user.id = "";
@@ -275,8 +277,8 @@ client.on("interactionCreate", async (interaction) => {
                 });
             } else if (interaction.customId === "get_sets") {
                 let foldersResult = await classes[interaction.user.id].getFolders();
-                if (!foldersResult || !foldersResult.success) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (foldersResult?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
+                if (!foldersResult?.success) {
+                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(foldersResult?.error?.stack && foldersResult.error.stack.length < 4000 ? foldersResult.error.message : "알 수 없는 오류입니다.").setColor("Red")] });
                     return;
                 };
                 let folders: { id: number, name: string, isFolder?: boolean }[] = []; //, isFolder?: boolean
@@ -286,14 +288,14 @@ client.on("interactionCreate", async (interaction) => {
                     isFolder: true
                 }));
                 let result = await classes[interaction.user.id].getClasses();
-                if (!result || !result.success) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
+                if (!result?.success) {
+                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(result?.error?.stack ? result.error.stack.length < 4000 ? result.error.message : result.error.stack : "알 수 없는 오류입니다.").setColor("Red")] });
                     return;
                 };
                 // folders = result.data! || [];
                 folders = [...result.data || [], ...folders || []];
-                let message: Message = await interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 폴더나 클래스를 선택해주세요.").setColor("Yellow")], //폴더나 클래스
+                let message = await interaction.editReply({
+                    embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 폴더나 클래스를 선택해주세요.").setColor("Yellow")], //클래스
                     components: [{
                         "type": 1,
                         "components": [{
@@ -306,7 +308,7 @@ client.on("interactionCreate", async (interaction) => {
                                     "description": (f.isFolder ? "폴더" : "클래스") //클래스
                                 };
                             }),
-                            "placeholder": "폴더나 클래스를 선택해주세요.", //폴더나 클래스
+                            "placeholder": "폴더나 클래스를 선택해주세요.", //클래스
                             "minValues": 1,
                             "maxValues": 1
                         }]
@@ -323,8 +325,8 @@ client.on("interactionCreate", async (interaction) => {
                     saveUsers();
                 };
                 let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i as "이용한 세트" | "만든 세트", /[0-9]/.test(i) ? Number(i) : 0);
-                if (!setsResult || !setsResult.success || !setsResult.data) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (setsResult?.message || "알 수 없는 오류입니다.")).setColor("Red")], components: [] });
+                if (!setsResult?.success || !setsResult.data) {
+                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(setsResult?.error?.stack && setsResult.error.stack.length < 4000 ? setsResult.error.message : "알 수 없는 오류입니다.").setColor("Red")], components: [] });
                     return;
                 };
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
@@ -338,8 +340,8 @@ client.on("interactionCreate", async (interaction) => {
             } else if (["s_memorize", "s_recall", "s_spell"].includes(interaction.customId)) {
                 let result = await classes[interaction.user.id].sendLearnAll(Activity[(interaction.customId === "s_memorize" ? "Memorize" : interaction.customId === "s_recall" ? "Recall" : "Spell")]);
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
-                if (!result || !result.success) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
+                if (!result?.success) {
+                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(result?.error?.stack ? result.error.stack.length < 4000 ? result.error.message : result.error.stack : "알 수 없는 오류입니다.").setColor("Red")] });
                     return;
                 };
                 interaction.editReply({
@@ -374,8 +376,8 @@ client.on("interactionCreate", async (interaction) => {
                     return;
                 };
                 let result = await classes[interaction.user.id].addGameScore((interaction.customId === "s_match_scramble" ? Activity["매칭"] : Activity["크래시"]), score, true);
-                if (!result || !result.success) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
+                if (!result?.success) {
+                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(result?.error?.stack ? result.error.stack.length < 4000 ? result.error.message : result.error.stack : "알 수 없는 오류입니다.").setColor("Red")] });
                     return;
                 };
                 let embed = new EmbedBuilder().setTitle("✅ " + result.message).setColor("Green");
@@ -395,8 +397,8 @@ client.on("interactionCreate", async (interaction) => {
             } else if (interaction.customId === "s_test") {
                 let result = await classes[interaction.user.id].postTest();
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
-                if (!result || !result.success) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")] });
+                if (!result?.success) {
+                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(result?.error?.stack ? result.error.stack.length < 4000 ? result.error.message : result.error.stack : "알 수 없는 오류입니다.").setColor("Red")] });
                     return;
                 };
                 interaction.editReply({ embeds: [new EmbedBuilder().setTitle("✅ 성공.").setDescription(result.message || "100점").setColor("Green")] });
@@ -419,22 +421,32 @@ client.on("interactionCreate", async (interaction) => {
                     //     }]
                     // }]
                 });
-                let collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
+                var collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
                     time: 30000,
                     max: 1,
                     errors: ["time"]
-                }).catch(() => message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete().catch(() => false)), 10000)).then(() => false));
+                }).catch(() => {
+                    message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] })
+                        .then(() => setTimeout(() => message.fetch().then(() => message.delete()).catch(() => false), 10000))
+                        .catch(() => false);
+                    return false;
+                });
                 if (!collected || !collected.first()) return;
                 collected.first()?.delete().catch(() => false);
                 let battleCode = Number(collected.first()?.content);
                 await message.edit({ "embeds": [new EmbedBuilder().setTitle("❓ 표시될 이름을 입력해주세요.").setColor("Yellow")] });
-                collected = await channel.awaitMessages({
+                var collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
                     time: 30000,
                     max: 1,
                     errors: ["time"]
-                }).catch(() => message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete().catch(() => false)), 10000)).then(() => false));
+                }).catch(() => {
+                    message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] })
+                        .then(() => setTimeout(() => message.fetch().then(() => message.delete()).catch(() => false), 10000))
+                        .catch(() => false);
+                    return false;
+                });
                 if (!collected || !collected.first()) return;
                 collected.first()?.delete().catch(() => false);
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 잠시만 기다려주세요.").setColor("Aqua")] });
@@ -442,7 +454,7 @@ client.on("interactionCreate", async (interaction) => {
                 let end = false;
                 quizBattle.on("error", (error: string) => {
                     end = true;
-                    message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${error}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete().catch(() => false)), 10000)).catch(() => false);
+                    message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${error}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete()).catch(() => false), 10000)).catch(() => false);
                     quizBattle.leave();
                     quizBattle.removeAllListeners();
                 });
@@ -526,7 +538,7 @@ client.on("interactionCreate", async (interaction) => {
                     //     }]
                     // }]
                 });
-                let collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
+                var collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
                     time: 30000,
                     max: 1,
@@ -536,7 +548,7 @@ client.on("interactionCreate", async (interaction) => {
                 collected.first()?.delete().catch(() => false);
                 let battleCode = Number(collected.first()?.content);
                 await message.edit({ "embeds": [new EmbedBuilder().setTitle("❓ 표시될 이름을 입력해주세요.").setColor("Yellow")] });
-                collected = await channel.awaitMessages({
+                var collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
                     time: 30000,
                     max: 1,
@@ -552,7 +564,7 @@ client.on("interactionCreate", async (interaction) => {
                     quizBattle.removeAllListeners();
                 });
                 quizBattle.on("start", () => {
-                    quizBattle.setScore(10000000);
+                    quizBattle.setScore(10000000, true);
                     message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 게임이 끝날 때까지 기다리는 중입니다.").setColor("Green")], components: [] }).then(() => setTimeout(() => message.fetch().then(() => message.delete().catch(() => false)), 10000)).catch(() => false)
                 });
                 quizBattle.on("end", () => {
@@ -575,9 +587,9 @@ client.on("interactionCreate", async (interaction) => {
                 //     qbClasses[interaction.user.id].removeAllListeners();
                 //     delete qbClasses[interaction.user.id];
                 // };
-                (interaction.message as Message).delete();
+                interaction.message.delete();
             } else if (interaction.customId === "_update_message") {
-                await updateMessage(interaction.message as Message, interaction.user.id, "edit", true);
+                await updateMessage(interaction.message, interaction.user.id, "edit", true);
                 interaction.deferUpdate();
             };
         } else if (interaction.isModalSubmit()) {
@@ -595,19 +607,19 @@ client.on("interactionCreate", async (interaction) => {
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     interaction.reply({ embeds: [new EmbedBuilder().setTitle("✅ 로그인 성공. 아이디와 비밀번호가 저장되었습니다.").setColor("Green")], ephemeral: true });
                 } else {
-                    interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ " + (loginResult?.message || "알 수 없는 오류입니다.")).setColor("Red")], ephemeral: true });
+                    interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(loginResult?.error?.stack && loginResult.error.stack.length < 4000 ? loginResult.error.message : "알 수 없는 오류입니다.").setColor("Red")], ephemeral: true });
                 };
             } else if (interaction.customId === "_set_set") {
                 let setID = Number(interaction.fields.getTextInputValue("set_id"));
                 let result = await classes[interaction.user.id].setSet(setID);
-                if (result && result?.success) {
+                if (result?.success) {
                     user.setID = setID;
                     saveUsers()
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     let embed = new EmbedBuilder().setTitle("✅ 세트가 설정되었습니다.").setDescription("자세한 내용은 위 두번째 임베드를 봐주세요.").setColor("Green");
                     await interaction.reply({ embeds: [embed], ephemeral: true });
                 } else {
-                    await interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ " + (result?.message || "알 수 없는 오류입니다.")).setColor("Red")], ephemeral: true });
+                    await interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(result?.error?.stack ? result.error.stack.length < 4000 ? result.error.message : result.error.stack : "알 수 없는 오류입니다.").setColor("Red")], ephemeral: true });
                 };
             };
         };
@@ -833,10 +845,10 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
         var embeds: EmbedBuilder[] = [];
         var embed = new EmbedBuilder().setColor(!disableMode ? "Green" : "Yellow");
         if (disableMode === "idPass") embed.setTitle("아이디/비번을 설정해주세요.");
-        else if (disableMode === "set") embed.setTitle((classes[userID].set.id && !classes[userID].class.id) ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요." : "세트를 설정해주세요.");
+        else if (disableMode === "set") embed.setTitle(!classes[userID].class.id ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요." : "세트를 설정해주세요.");
         else {
             if (rf) await classes[userID].login(decrypt(users[userID].id), decrypt(users[userID].password)).then((res) => {
-                if (!res!.success) {
+                if (!res?.success) {
                     users[userID].id = "";
                     users[userID].password = "";
                     users[userID].setID = 0;
@@ -887,11 +899,13 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
                     let order = 1;
                     var array = total.data.Test.map(score => `${order++}차 - **${score}점**`);
                     embed.addFields([{
-                        name: "테스트", value: array.length > 0 ? array.reduce((all: any, one: any, i) => {
+                        name: "테스트",
+                        value: array.length > 0 ? array.reduce((all: any, one: any, i) => {
                             const ch = Math.floor(i / 2);
                             all[ch] = [].concat((all[ch] || []), one);
                             return all
-                        }, []).map((x: string[]) => x[0] + (x[1] ? " " + x[1] : "")).join("\n") : "테스트 기록이 없습니다.", inline: true
+                        }, []).map((x: string[]) => x[0] + (x[1] ? " " + x[1] : "")).join("\n") : "테스트 기록이 없습니다.",
+                        inline: true
                     }]);
                 };
             };
