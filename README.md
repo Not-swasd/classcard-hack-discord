@@ -2,7 +2,7 @@
 언어: [![Language](https://shields.io/badge/TypeScript-3178C6?logo=TypeScript&logoColor=FFF&style=flat-square)](https://www.typescriptlang.org/)<br>
 **:warning: 악용금지! 학습 목적으로만 사용해주세요.**   
 
-## 기록(?)
+## 일기장
 ```
 - 2022년 10월 14일
 오랜만에 코드를 봤더니 상태가...ㅋㅋ
@@ -10,6 +10,8 @@
 계속하다 보면 괜찮아지지 않을까?
 - 2022년 11월 8일
 작동되지 않음
+- 2022년 11월 13일
+이제 작동 됨.
 ```
 
 ## 📙 설명
