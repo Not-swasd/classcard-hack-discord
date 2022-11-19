@@ -2,18 +2,6 @@
 언어: [![Language](https://shields.io/badge/TypeScript-3178C6?logo=TypeScript&logoColor=FFF&style=flat-square)](https://www.typescriptlang.org/)<br>
 **:warning: 악용금지! 학습 목적으로만 사용해주세요.**   
 
-## 일기장
-```
-- 2022년 10월 14일
-오랜만에 코드를 봤더니 상태가...ㅋㅋ
-코드 정리를 했다. 너무 더러워서 완벽히는 못했다.
-계속하다 보면 괜찮아지지 않을까?
-- 2022년 11월 8일
-작동되지 않음
-- 2022년 11월 13일
-이제 작동 됨.
-```
-
 ## 📙 설명
 * 클래스카드 자동화
 * 클래스카드 모바일 앱에서 사용하는 api를 사용합니다. (브라우저를 쓰는 것보다 안전함.[^w])
