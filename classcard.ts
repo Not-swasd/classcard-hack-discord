@@ -62,7 +62,7 @@ export default class ClassCard {
     public class: Class;
     public user: User;
     constructor() {
-        this.client = axios.create({ headers: { "user-agent": "ClassCard/1.0.323 (iPhone; iOS 16.0.0; Scale/2.0) Alamofire/1.0.315" } });
+        this.client = axios.create({ headers: { "user-agent": "ClassCard/1.0.325 (iPhone; iOS 16.0.0; Scale/2.0) Alamofire/1.0.315" } });
         this.set = {
             id: 0,
             name: "",
@@ -84,11 +84,16 @@ export default class ClassCard {
 
     async login(id: string, password: string) {
         try {
-            var res = await this.client.get(`https://${n}.classcard.net/api/users/login?` + transformRequest({
+            var res = await this.client.post(`https://${n}.classcard.net/api/users/login`, transformRequest({
                 "login": 1,
                 "id": id,
                 "pw": password
-            })).catch(x => x);
+            }), {
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    security_id: "20ff464a2eeeec5588a7acc3408adf0d"
+                }
+            }).catch(x => x);
             if (res?.data?.result?.code !== 200) throw new Error("아이디 또는 비밀번호를 확인해주세요. (0)", { cause: res });
             this.user = {
                 isTeacher: res.data.res_data.user_type === 1,
@@ -260,9 +265,9 @@ export default class ClassCard {
         try {
             // api
             let res = await this.getSet(setId);
-            if (!res?.success) throw new Error(res!.message + " (0)", { cause: res });
+            if (!res?.success) throw new Error(res?.message + " (0)", { cause: res });
             this.set = res?.data!;
-            return { success: true, message: "세트 정보가 설정되었습니다.", data: this.set };
+            return { success: true, message: "세트가 설정되었습니다.", data: this.set };
         } catch (e) {
             if (e instanceof Error) return {
                 success: false,
@@ -292,9 +297,9 @@ export default class ClassCard {
     async setClass(classId: number) {
         try {
             let res = await this.getClass(classId);
-            if (!res?.data) throw new Error(res!.message + " (0)", { cause: res });
+            if (!res?.data) throw new Error(res?.message + " (0)", { cause: res });
             this.class = res.data;
-            return { success: true, message: "클래스 정보가 설정되었습니다.", data: this.set };
+            return { success: true, message: "클래스가 설정되었습니다.", data: this.set };
         } catch (e) {
             if (e instanceof Error) return {
                 success: false,
@@ -416,9 +421,6 @@ export default class ClassCard {
 
     async getClasses() {
         try {
-            // let res = await this.client.get(`https://${n}.classcard.net/api/users/page?u_idx=${this.user.id}`).catch(x => x);
-            // console.log(res)
-            // if (res?.data?.result?.code !== 200) throw new Error("클래스 목록을 가져오는 중 오류가 발생했습니다.", { cause: res });
             let params = new URLSearchParams();
             params.append("p", JSON.stringify({
                 "base_info": {
@@ -430,12 +432,17 @@ export default class ClassCard {
             }));
             let res = await this.client.post(`https://${n}.classcard.net/sync/sync_set_class_v3`, params).catch(x => x);
             if (res?.data?.result?.code !== 200) throw new Error("클래스 목록을 가져오는 중 오류가 발생했습니다.", { cause: res });
-            let classes = (res.data.res_data.fm_class as { class_idx: string, name: string }[]).map(c => {
+            let classes = [...(res.data.res_data.fm_class as { class_idx: string, name: string }[]).map(c => {
                 return {
                     id: Number(c.class_idx),
                     name: c.name
                 };
-            });
+            }), ...(res.data.res_data.g_class as { class_idx: string, name: string }[]).map(c => {
+                return {
+                    id: Number(c.class_idx),
+                    name: c.name
+                };
+            })];
             return {
                 success: true,
                 message: "성공",
@@ -594,8 +601,8 @@ export class QuizBattle extends EventEmitter {
         quest: { card_idx: string, score: number, correct_yn: number }[]
     };
     b_quest_idx: number;
-    bp: boolean;
-    constructor(battleID: number, bp: boolean = false) {
+    bypassCheck: boolean;
+    constructor(battleID: number, bypassCheck: boolean = false) {
         super();
         this.battleID = battleID;
         this.score = 1000;
@@ -612,7 +619,7 @@ export class QuizBattle extends EventEmitter {
             quest: []
         };
         this.b_quest_idx = 0;
-        this.bp = bp;
+        this.bypassCheck = bypassCheck;
     };
 
     init(): Promise<boolean> {
@@ -683,7 +690,7 @@ export class QuizBattle extends EventEmitter {
         this.round.quest.push({
             card_idx: quest.test_card_idx,
             score: correct ? (100 * (quest.weight || 1)) : 0,
-            correct_yn: correct ? 1 : 0
+            correct_yn: Number(correct) // correct ? 1 : 0 
         });
         if (correct) {
             this.round.correct++;
@@ -753,7 +760,7 @@ export class QuizBattle extends EventEmitter {
             };
         };
         if (data.cmd === "b_join" && data.result === "ok") {
-            if ((data.b_mode === 2 || data.set_type === 5) && !this.bp) {
+            if ((data.b_mode === 2 || data.set_type === 5) && !this.bypassCheck) {
                 this.emit("error", "이 배틀 형식은 지원하지 않습니다. (2)");
                 return;
             };
