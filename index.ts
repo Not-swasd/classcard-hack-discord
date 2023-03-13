@@ -1,10 +1,10 @@
 import { CategoryChannel, Client, Collection, Message, TextChannel, EmbedBuilder, Partials, ComponentType, ChannelType } from "discord.js";
-import { Activity, ClassCard, QuizBattle, setType } from "./classcard.js";
+import { Activity, ClassCard, QuizBattle, SetType } from "./classcard.js";
 import * as fs from "fs";
 import * as crypto from "crypto";
 
 if (!fs.existsSync("./config.json")) {
-    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["대빵 디코 아이디"], prefix: "!", secret: "", guild: "적지마", ticketCategory: "적지마", ticketChannel: "적지마" }, null, 4));
+    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["디스코드 봇 소유자 아이디"], prefix: "!", guild: "", ticketCategory: "", ticketChannel: "" }, null, 4));
     console.info("config.json 설정좀");
     process.exit(0);
 };
@@ -13,12 +13,12 @@ let config: {
     token: string,
     owners: string[],
     prefix: string,
-    secret: string,
     guild: string,
     ticketCategory: string,
-    ticketChannel: string
+    ticketChannel: string,
+    secret?: string
 } = JSON.parse(fs.readFileSync("./config.json", "utf8"));
-let secret: string = String(config.secret).length === 32 ? config.secret : randPassword(32);
+let secret: string = config.secret && config.secret.length === 32 ? config.secret : randPassword(32);
 let users: {
     [key: string]: {
         id: string,
@@ -67,36 +67,35 @@ const client: Client = new Client({
 console.info("잠시만 기다려주세요.");
 await Promise.all(Object.keys(users).map(async id => {
     try {
-        let user = users[id];
         if (!classes[id]) classes[id] = new ClassCard();
-        if (decrypt(user.id) && decrypt(user.password)) {
-            let res = await classes[id].login(decrypt(user.id), decrypt(user.password)).then(res => res?.success);
+        if (decrypt(users[id].id) && decrypt(users[id].password)) {
+            let res = await classes[id].login(decrypt(users[id].id), decrypt(users[id].password)).then(res => res?.success);
             if (!res) {
-                user.id = "";
-                user.password = "";
-                user.setID = 0;
-                user.classID = 0;
+                users[id].id = "";
+                users[id].password = "";
+                users[id].setID = 0;
+                users[id].classID = 0;
             };
         } else {
-            user.id = "";
-            user.password = "";
-            user.setID = 0;
-            user.classID = 0;
+            users[id].id = "";
+            users[id].password = "";
+            users[id].setID = 0;
+            users[id].classID = 0;
         };
-        if (user.setID && !(user.setID && await classes[id].setSet(user.setID).then(res => res?.success))) user.setID = 0;
-        if (user.classID && !(user.classID && await classes[id].setClass(user.classID).then(res => res?.success))) user.classID = 0;
+        if (users[id].classID && !(await classes[id].setClass(users[id].classID).then(res => res?.success))) users[id].classID = 0;
+        if (users[id].setID && !(await classes[id].setSet(users[id].setID).then(res => res?.success))) users[id].setID = 0;
         saveUsers();
-        if (user.channelID && user.messageID) client.once("ready", async () => {
-            if (!user.channelID || !user.messageID) return;
+        if (users[id].channelID && users[id].messageID) client.once("ready", async () => {
+            if (!users[id].channelID || !users[id].messageID) return;
             let guild = client.guilds.cache.get(config.guild)
             if (!guild) return;
-            let channel = guild.channels.cache.get(user.channelID) as TextChannel;
+            let channel = guild.channels.cache.get(users[id].channelID) as TextChannel;
             if (!channel) return;
-            let message = await channel.messages.fetch(user.messageID).catch(() => undefined);
+            let message = await channel.messages.fetch(users[id].messageID).catch(() => undefined);
             if (!message) {
                 channel.delete();
-                user.channelID = "";
-                user.messageID = "";
+                users[id].channelID = "";
+                users[id].messageID = "";
                 saveUsers();
                 return;
             };
@@ -116,7 +115,7 @@ client.on("interactionCreate", async (interaction) => {
     try {
         if (!users[interaction.user.id]) users[interaction.user.id] = { id: "", password: "", channelID: "", messageID: "", setID: 0, classID: 0 };
         saveUsers();
-        let user = users[interaction.user.id];
+        const user = users[interaction.user.id];
         if (interaction.isButton()) {
             const channel = interaction.channel as TextChannel;
             if (!channel.topic?.includes("Created By " + client.user?.username)) return;
@@ -125,13 +124,13 @@ client.on("interactionCreate", async (interaction) => {
                 let channel = interaction.guild?.channels.cache.get(user.channelID) as TextChannel;
                 if (user.channelID && channel) await channel.delete();
                 channel = await (interaction.guild?.channels.cache.get(config.ticketCategory) as CategoryChannel).children.create({ "name": interaction.user.username.toLowerCase() /* ＃${interaction.user.discriminator} */, "topic": "Created By " + client.user?.username + " | USER: " + interaction.user.id });
-                user.channelID = channel.id;
+                users[interaction.user.id].channelID = channel.id;
                 if (!classes[interaction.user.id]) classes[interaction.user.id] = new ClassCard();
                 let message = await updateMessage(channel, interaction.user.id, "send") as Message;
-                if (message.id) user.messageID = message.id;
+                if (message.id) users[interaction.user.id].messageID = message.id;
                 else {
-                    user.messageID = "";
-                    user.channelID = "";
+                    users[interaction.user.id].messageID = "";
+                    users[interaction.user.id].channelID = "";
                     saveUsers();
                     if (channel) channel.delete();
                     return;
@@ -174,8 +173,8 @@ client.on("interactionCreate", async (interaction) => {
                 let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
                     if (inter.customId !== "_yes") return false;
                     await channel.delete();
-                    user.channelID = "";
-                    user.messageID = "";
+                    users[interaction.user.id].channelID = "";
+                    users[interaction.user.id].messageID = "";
                     saveUsers();
                     return true;
                 }).catch(() => false);
@@ -207,10 +206,10 @@ client.on("interactionCreate", async (interaction) => {
                 });
                 let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
                     if (inter.customId !== "_yes") return false;
-                    user.id = "";
-                    user.password = "";
-                    user.setID = 0;
-                    user.classID = 0;
+                    users[interaction.user.id].id = "";
+                    users[interaction.user.id].password = "";
+                    users[interaction.user.id].setID = 0;
+                    users[interaction.user.id].classID = 0;
                     delete classes[interaction.user.id];
                     classes[interaction.user.id] = new ClassCard();
                     saveUsers();
@@ -276,26 +275,26 @@ client.on("interactionCreate", async (interaction) => {
                     }]
                 });
             } else if (interaction.customId === "get_sets") {
-                let foldersResult = await classes[interaction.user.id].getFolders();
-                if (!foldersResult?.success) {
-                    interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(foldersResult?.error?.stack && foldersResult.error.stack.length < 4000 ? foldersResult.error.message : "알 수 없는 오류입니다.").setColor("Red")] });
-                    return;
-                };
+                // let foldersResult = await classes[interaction.user.id].getFolders();
+                // if (!foldersResult?.success) {
+                //     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(foldersResult?.error?.stack && foldersResult.error.stack.length < 4000 ? foldersResult.error.message : "알 수 없는 오류입니다.").setColor("Red")] });
+                //     return;
+                // };
                 let folders: { id: number, name: string, isFolder?: boolean }[] = []; //, isFolder?: boolean
-                foldersResult.data?.forEach(f => folders.push({ //Object.keys(foldersResult.data!).for~
-                    id: f.id,
-                    name: f.name,
-                    isFolder: true
-                }));
+                // foldersResult.data?.forEach(f => folders.push({ //Object.keys(foldersResult.data!).for~
+                //     id: f.id,
+                //     name: f.name,
+                //     isFolder: true
+                // }));
                 let result = await classes[interaction.user.id].getClasses();
                 if (!result?.success) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(result?.error?.stack ? result.error.stack.length < 4000 ? result.error.message : result.error.stack : "알 수 없는 오류입니다.").setColor("Red")] });
                     return;
                 };
-                // folders = result.data! || [];
-                folders = [...result.data || [], ...folders || []];
+                folders = result.data! || [];
+                // folders = [...result.data || [], ...folders || []];
                 let message = await interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 폴더나 클래스를 선택해주세요.").setColor("Yellow")], //클래스
+                    embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 클래스를 선택해주세요.").setColor("Yellow")], // 폴더나 클래스
                     components: [{
                         "type": 1,
                         "components": [{
@@ -308,7 +307,7 @@ client.on("interactionCreate", async (interaction) => {
                                     "description": (f.isFolder ? "폴더" : "클래스") //클래스
                                 };
                             }),
-                            "placeholder": "폴더나 클래스를 선택해주세요.", //클래스
+                            "placeholder": "클래스를 선택해주세요.", // 폴더나 클래스
                             "minValues": 1,
                             "maxValues": 1
                         }]
@@ -319,22 +318,26 @@ client.on("interactionCreate", async (interaction) => {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 알 수 없는 오류입니다.").setColor("Red")], components: [] });
                     return;
                 };
-                if (/[0-9]/.test(i)) {
-                    await classes[interaction.user.id].setClass(Number(i));
-                    user.classID = Number(i);
-                    saveUsers();
-                };
-                let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i as "이용한 세트" | "만든 세트", /[0-9]/.test(i) ? Number(i) : 0);
+                const classId = Number(i);
+                // if (/[0-9]/.test(i)) {
+                //     await classes[interaction.user.id].setClass(classId);
+                //     users[interaction.user.id].classID = classId;
+                //     saveUsers();
+                // };
+                let setsResult = await classes[interaction.user.id].getSetsFromClass(classId);
+                // let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i as "이용한 세트" | "만든 세트", /[0-9]/.test(i) ? classId : 0);
                 if (!setsResult?.success || !setsResult.data) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(setsResult?.error?.stack && setsResult.error.stack.length < 4000 ? setsResult.error.message : "알 수 없는 오류입니다.").setColor("Red")], components: [] });
                     return;
                 };
+                users[interaction.user.id].classID = classId;
+                saveUsers();
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                 let sets = setsResult.data;
-                var description = sets.length < 1 ? `이 ${/[0-9]/.test(i) ? "클래스" : "폴더"}에 세트가 하나도 없습니다.` : "\`세트 이름\` [세트 아이디]\n\n" + sets.map(s => `\`${s.name}\` [${s.id}]`).join("\n");
+                var description = sets.length < 1 ? `이 클래스에 세트가 하나도 없습니다.`/*${/[0-9]/.test(i) ? "클래스" : "폴더"}에 */ : "\`세트 이름\` [세트 아이디]\n\n" + sets.map(s => `\`${s.name}\` [${s.id}]`).join("\n");
                 if (description.length > 3800) description = "세트가 너무 많아서 다 표시할 수 없습니다. 수동으로 가져와주세요.\n클래스 -> 세트 -> 오른쪽 위에 있는 ... -> 세트공유를 누르고 url에서 ~~.net/set/ 이 뒤에 있는 숫자가 세트 아이디입니다.";
                 interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle(`✅ **${/[0-9]/.test(i) ? folders.find(x => x.id === Number(i))?.name : i}**에 있는 세트 목록`).setColor("Green").setDescription(description)],
+                    embeds: [new EmbedBuilder().setTitle(`✅ **${folders.find(x => x.id === classId)?.name}**에 있는 세트 목록`).setColor("Green").setDescription(description)], ///[0-9]/.test(i) ? folders.find(x => x.id === classId)?.name : i
                     components: []
                 });
             } else if (["s_memorize", "s_recall", "s_spell"].includes(interaction.customId)) {
@@ -599,10 +602,10 @@ client.on("interactionCreate", async (interaction) => {
                 classes[interaction.user.id] = new ClassCard();
                 let loginResult = await classes[interaction.user.id].login(id, password);
                 if (loginResult?.success) {
-                    user.id = encrypt(id);
-                    user.password = encrypt(password);
-                    user.setID = 0;
-                    user.classID = 0;
+                    users[interaction.user.id].id = encrypt(id);
+                    users[interaction.user.id].password = encrypt(password);
+                    users[interaction.user.id].setID = 0;
+                    users[interaction.user.id].classID = 0;
                     saveUsers()
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     interaction.reply({ embeds: [new EmbedBuilder().setTitle("✅ 로그인 성공. 아이디와 비밀번호가 저장되었습니다.").setColor("Green")], ephemeral: true });
@@ -613,8 +616,8 @@ client.on("interactionCreate", async (interaction) => {
                 let setID = Number(interaction.fields.getTextInputValue("set_id"));
                 let result = await classes[interaction.user.id].setSet(setID);
                 if (result?.success) {
-                    user.setID = setID;
-                    saveUsers()
+                    users[interaction.user.id].setID = setID;
+                    saveUsers();
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     let embed = new EmbedBuilder().setTitle("✅ 세트가 설정되었습니다.").setDescription("자세한 내용은 위 두번째 임베드를 봐주세요.").setColor("Green");
                     await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -765,7 +768,7 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
                 ]
             };
             if (!classes[userID].class.id) row.components.pop();
-            if (classes[userID].set.type !== setType["word"] && classes[userID].set.type !== setType["sentence"]) for (let i = 0; i < 3; i++) row.components.shift();
+            if (classes[userID].set.type !== SetType["word"] && classes[userID].set.type !== SetType["sentence"]) for (let i = 0; i < 3; i++) row.components.shift();
             if (row.components.length > 0) components.push(row);
         };
         components.push({
@@ -787,7 +790,7 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
                 }
             ]
         });
-        if (!disabled && (classes[userID].set.type === setType["word"] || classes[userID].set.type === setType["sentence"])) {
+        if (!disabled && (classes[userID].set.type === SetType["word"] || classes[userID].set.type === SetType["sentence"])) {
             components.at(-1)!.components.unshift({
                 "type": 2,
                 "label": "매칭/스크램블 게임",
@@ -883,18 +886,18 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
                     },
                     {
                         "name": "세트 종류",
-                        "value": setType[classes[userID].set.type],
+                        "value": SetType[classes[userID].set.type],
                         "inline": true
                     },
                     {
                         "name": "카드 개수",
-                        "value": String(classes[userID].set.study_data.length) + "개",
+                        "value": String(classes[userID].set.study_data!.length) + "개",
                         "inline": true
                     }
                 ])
                 .setColor("Green");
             if (total && total.data) {
-                if (classes[userID].set.type === setType["word"] || classes[userID].set.type === setType["sentence"]) embed.addFields([{ name: "현재 학습 진행도", value: `암기: **${total.data.Memorize}%**\n리콜: **${total.data.Recall}%**\n스펠: **${total.data.Spell}%**`, inline: true }]);
+                if (classes[userID].set.type === SetType["word"] || classes[userID].set.type === SetType["sentence"]) embed.addFields([{ name: "현재 학습 진행도", value: `암기: **${total.data.Memorize}%**\n리콜: **${total.data.Recall}%**\n스펠: **${total.data.Spell}%**`, inline: true }]);
                 if (total.data.Test) {
                     let order = 1;
                     var array = total.data.Test.map(score => `${order++}차 - **${score}점**`);
