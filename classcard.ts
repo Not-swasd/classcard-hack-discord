@@ -316,7 +316,7 @@ export default class ClassCard {
                 this.set.log[obj[activity]] = String(Number(this.set.log[obj[activity]]) + 1);
             };
             p.req_data.fm_user_set_log.push({
-                "bookmark_yn": "0", // 로컬에 북마크 저장하는 듯
+                "bookmark_yn": "0",
                 "class_idx": this.class.id,
                 "deleted": "0",
                 "dirty": this.set.dirty ? 1 : 0,
@@ -799,6 +799,84 @@ export default class ClassCard {
 
     static getTimestamp(t?: number) {
         return `${new Date(t || Date.now()).getFullYear()}-${(new Date(t || Date.now()).getMonth() + 1).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getMonth() + 1}-${(new Date(t || Date.now()).getDate()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getDate()} ${(new Date(t || Date.now()).getHours()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getHours()}:${(new Date(t || Date.now()).getMinutes()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getMinutes()}:${(new Date(t || Date.now()).getSeconds()).toString().length === 1 ? "0" : ""}${new Date(t || Date.now()).getSeconds()}`;
+    };
+
+    static async createAccount(type: UserType, accountInfo: {
+        id: string,
+        email: string,
+        password: string,
+        name: string,
+        phone: string,
+        orgName?: string
+    }) {
+        try {
+            const [emailAddress, emailDomain] = accountInfo.email.split("@");
+            let postData;
+            if(type === UserType["student"]) postData = qs.stringify({
+                "birthday": "20000404",
+                "class_idx": "-1",
+                "class_type": "c",
+                "day": "4",
+                "email": emailAddress,
+                "email_alarm_yn": "0",
+                "email_domain": emailDomain,
+                "external_id": "",
+                "g_class_idx": "-1",
+                "hp": accountInfo.phone,
+                "join_client": "1",
+                "join_route": "1",
+                "login_id": accountInfo.id,
+                "login_pw": accountInfo.password,
+                "month": "4",
+                "name": accountInfo.name,
+                "over_14_yn": "1",
+                "parent_hp": "",
+                "parent_name": "",
+                "profile_img": "",
+                "sess_key": "",
+                "user_type": type,
+                "year": "2000"
+            });
+            else if (type === UserType["teacher"]) postData = qs.stringify({ // SCHOOL TEACHER NOT HAKWON
+                "auth_code": Math.floor(100000 + Math.random() * 900000).toString(),
+                "birthday": "",
+                "born_day": "",
+                "born_month": "",
+                "born_year": "",
+                "class_idx": "-1",
+                "class_type": "c",
+                "email": emailAddress,
+                "email_alarm_yn": "0",
+                "email_domain": emailDomain,
+                "external_id": "",
+                "g_class_idx": "-1",
+                "hp": accountInfo.phone,
+                "join_client": "1",
+                "join_route": "1",
+                "login_id": accountInfo.id,
+                "login_pw": accountInfo.password,
+                "name": accountInfo.name,
+                "org_name": accountInfo.orgName || "XX초등학교",
+                "over_14_yn": "0",
+                "profile_img": "",
+                "school_type": SchoolType["school"],
+                "sess_key": "",
+                "user_type": type
+            });
+            const response = await axios.post(`https://${n}.classcard.net/LoginProc/regist`, postData).then(res => res.data).catch(() => undefined);
+            if(response?.result !== "ok") throw new Error("요청을 처리하는 동안 오류가 발생했습니다. (0)");
+            return {
+                success: true,
+                message: "suc",
+                data: response
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error
+            };
+        }
     };
 };
 
@@ -1372,14 +1450,4 @@ qs.stringify({
     "type-chk": "1",
     "user_type": "1"
 });
-
-    static async createAccount(type: UserType, accountInfo: {
-        email: string,
-        password: string,
-        username: string,
-        phone: string,
-
-    }) {
-
-    };
 */
