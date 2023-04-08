@@ -1,5 +1,5 @@
 import { CategoryChannel, Client, Collection, Message, TextChannel, EmbedBuilder, Partials, ComponentType, ChannelType } from "discord.js";
-import { Activity, ClassCard, QuizBattle, SetType } from "./classcard.js";
+import { Activity, ClassCard, QuizBattle, SetType, BattleQuest } from "./classcard.js";
 import * as fs from "fs";
 import * as crypto from "crypto";
 
@@ -463,7 +463,7 @@ client.on("interactionCreate", async (interaction) => {
                 });
                 quizBattle.on("start", async () => {
                     try {
-                        var next: typeof QuizBattle.prototype.battleInfo.quest_list[0] = quizBattle.battleInfo.quest_list[0];
+                        var next: BattleQuest = quizBattle.battleInfo.quest_list[0];
                         while (!end) {
                             let firstLine = {
                                 correct: String(quizBattle.correct) + "개",
@@ -513,21 +513,21 @@ client.on("interactionCreate", async (interaction) => {
                         };
                     } catch (e) {
                         end = true;
-                        message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${e}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 10000)).catch(() => false);
+                        message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${e}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 15000)).catch(() => false);
                     };
                 });
                 quizBattle.on("end", () => {
                     end = true;
-                    message.edit({ embeds: [new EmbedBuilder().setTitle("🎮 배틀이 종료되었습니다.").setColor("Green")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 10000)).catch(() => false);
+                    message.edit({ embeds: [new EmbedBuilder().setTitle("🎮 배틀이 종료되었습니다.").setColor("Green")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 15000)).catch(() => false);
                     quizBattle.leave();
                     quizBattle.removeAllListeners();
                 });
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 웹소켓 연결 중...").setColor("Aqua")] });
                 await quizBattle.init();
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 접속 중...").setColor("Aqua")] });
+                await message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 배틀 시작을 기다리는 중입니다.").setColor("Aqua")] }); // start가 먼저 트리거 될 수 있기 때문에 앞에 배치함.
                 await quizBattle.join(String(collected.first()?.content));
-                await message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 배틀 시작을 기다리는 중입니다.").setColor("Aqua")] });
-            } else if (interaction.customId === "_quiz_battle_crash") {
+            } else if (interaction.customId === "_quiz_battle_crasher") {
                 interaction.deferUpdate();
                 let message = await interaction.channel!.send({
                     "embeds": [new EmbedBuilder().setTitle("❓ 배틀코드를 입력해주세요.").setColor("Yellow")],
@@ -546,7 +546,7 @@ client.on("interactionCreate", async (interaction) => {
                     time: 30000,
                     max: 1,
                     errors: ["time"]
-                }).catch(() => message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 10000)).then(() => false));
+                }).catch(() => message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 15000)).then(() => false));
                 if (!collected || !collected.first()) return;
                 collected.first()?.delete().catch(() => false);
                 let battleCode = Number(collected.first()?.content);
@@ -556,30 +556,30 @@ client.on("interactionCreate", async (interaction) => {
                     time: 30000,
                     max: 1,
                     errors: ["time"]
-                }).catch(() => message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 10000)).then(() => false));
+                }).catch(() => message.edit({ embeds: [new EmbedBuilder().setTitle("❌ 시간이 초과되었습니다.").setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 15000)).then(() => false));
                 if (!collected || !collected.first()) return;
                 collected.first()?.delete().catch(() => false);
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 잠시만 기다려주세요.").setColor("Aqua")] });
                 let quizBattle = new QuizBattle(battleCode, true);
                 quizBattle.on("error", (error: string) => {
-                    message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${error}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 10000)).catch(() => false);
+                    message.edit({ embeds: [new EmbedBuilder().setTitle(`❌ ${error}`).setColor("Red")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 15000)).catch(() => false);
                     quizBattle.leave();
                     quizBattle.removeAllListeners();
                 });
                 quizBattle.on("start", () => {
-                    quizBattle.setScore(10000000, true);
-                    message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 게임이 끝날 때까지 기다리는 중입니다.").setColor("Green")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 10000)).catch(() => false)
+                    quizBattle.setScore(1000000000, true); // 점수를 설정하고 바로 서버에 보내면 선생님의 화면에 다른 사람들이 안 보이기 때문에 변수만 설정 후 게임이 끝나고 보냅니다.
+                    message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 게임이 끝날 때까지 기다리는 중입니다.").setColor("Green")], components: [] }).catch(() => false)
                 });
                 quizBattle.on("end", () => {
-                    message.edit({ embeds: [new EmbedBuilder().setTitle("🎮 크래셔 작동 성공.").setColor("Green")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 10000)).catch(() => false);
+                    message.edit({ embeds: [new EmbedBuilder().setTitle("🎮 크래셔 작동 성공.").setColor("Green")], components: [] }).then(() => setTimeout(() => message.fetch().then(async () => await message.delete().catch(() => false)), 15000)).catch(() => false);
                     quizBattle.leave();
                     quizBattle.removeAllListeners();
                 });
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 웹소켓 연결 중...").setColor("Aqua")] });
                 await quizBattle.init();
                 await message.edit({ embeds: [new EmbedBuilder().setTitle("⚙️ 접속 중...").setColor("Aqua")] });
+                await message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 배틀 시작을 기다리는 중입니다.").setColor("Aqua")] }); // start가 먼저 트리거 될 수 있기 때문에 앞에 배치함.
                 await quizBattle.join("<script>location.reload()</script>" + collected.first()?.content);
-                await message.edit({ embeds: [new EmbedBuilder().setTitle("⌛ 배틀 시작을 기다리는 중입니다.").setColor("Aqua")] });
             } else if (interaction.customId.startsWith("_delete_message")) {
                 if (interaction.customId.split("|")[1] != interaction.user.id) {
                     interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ 잘못된 접근입니다.").setColor("Red")], ephemeral: true });
@@ -785,7 +785,7 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
                     "type": 2,
                     "label": "퀴즈배틀 크래셔",
                     "style": 3,
-                    "customId": "_quiz_battle_crash",
+                    "customId": "_quiz_battle_crasher",
                     "disabled": false
                 }
             ]
