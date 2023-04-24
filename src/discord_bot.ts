@@ -11,7 +11,7 @@ import {
 } from "discord.js";
 import {
     EActivity,
-    CardSet,
+    Classcard,
     QuizBattle,
     ESetType,
     TBattleQuest,
@@ -34,7 +34,17 @@ let secret: string =
     configFile.secret && configFile.secret.length === 32
         ? configFile.secret
         : randPassword(32);
-
+/**
+ * Discord base user account
+ *
+ * @param classcard_id classcard account id.
+ * @param classcard_password classcard account password.
+ * @param classcard_classID target class id.
+ * @param classcard_setID target cardSet id.
+ *
+ * @param discord_channelID user's ticket channel id.
+ * @param discord_messageID user's control button message id.
+ */
 type TUser = {
     classcard_id: string;
     classcard_password: string;
@@ -47,9 +57,13 @@ type TUser = {
 type TUserMap = {
     [key: string]: TUser;
 };
+/**
+ * @param key discord id
+ * @param value TUser
+ */
 let userMap: TUserMap = getUsers();
 
-let classes: { [id: string]: CardSet } = {};
+let classes: { [id: string]: Classcard } = {};
 let qbClasses: { [id: string]: QuizBattle } = {};
 
 const discordClient: Client = new Client({
@@ -146,7 +160,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                 });
                 userMap[interaction.user.id].discord_channelID = channel.id;
                 if (!classes[interaction.user.id])
-                    classes[interaction.user.id] = new CardSet();
+                    classes[interaction.user.id] = new Classcard();
                 let message = (await updateMessage(
                     channel,
                     interaction.user.id,
@@ -298,7 +312,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                         userMap[interaction.user.id].classcard_setID = 0;
                         userMap[interaction.user.id].classcard_classID = 0;
                         delete classes[interaction.user.id];
-                        classes[interaction.user.id] = new CardSet();
+                        classes[interaction.user.id] = new Classcard();
                         saveUserMap(userMap);
                         updateMessage(
                             interaction.channel?.messages.cache.get(
@@ -1326,7 +1340,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                 const id = interaction.fields.getTextInputValue("id");
                 const password =
                     interaction.fields.getTextInputValue("password");
-                classes[interaction.user.id] = new CardSet();
+                classes[interaction.user.id] = new Classcard();
                 let loginResult = await classes[interaction.user.id].login(
                     id,
                     password
@@ -1554,12 +1568,23 @@ discordClient.on("messageCreate", async (message: Message) => {
     }
 });
 
-function getUsers() {
+/**
+ * Read user.json
+ * @returns user map
+ */
+function getUsers(): TUserMap {
     if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
-    let users: TUserMap = JSON.parse(fs.readFileSync("./users.json", "utf8"));
-    return users;
+    let userMap: TUserMap = JSON.parse(fs.readFileSync("./users.json", "utf8"));
+    return userMap;
 }
 
+/**
+ * Verify that the account is valid.
+ * @param config config file.
+ * @param userMap original user map
+ * @param secret encrypting key
+ * @returns fixed user map
+ */
 async function initializeUsers(
     config: TConfigFile,
     userMap: TUserMap,
@@ -1577,7 +1602,7 @@ async function initializeUsers(
             let user: TUser = userMap[id];
             try {
                 // init class
-                if (!classes[id]) classes[id] = new CardSet();
+                if (!classes[id]) classes[id] = new Classcard();
 
                 // check login
                 // if the account infomation exist
@@ -1905,7 +1930,7 @@ async function updateMessage(
                                 "./users.json",
                                 JSON.stringify(userMap, null, 4)
                             );
-                            classes[userID] = new CardSet();
+                            classes[userID] = new Classcard();
                             updateMessage(message, userID, s, false);
                             throw new Error("invalid id or password.");
                         }
