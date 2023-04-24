@@ -478,7 +478,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                     .awaitMessageComponent({
                         filter: (i) => i.user.id === interaction.user.id,
                         time: 0,
-                        componentType: ComponentType.SelectMenu,
+                        componentType: ComponentType.StringSelect,
                     })
                     .then((interaction) => interaction.values[0])
                     .catch(() => false);
