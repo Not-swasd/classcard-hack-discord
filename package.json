@@ -1,29 +1,28 @@
 {
-  "name": "classcard",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.ts",
-  "scripts": {
-    "start": "tsc --project tsconfig.json && node index.js",
-    "compile": "tsc --project tsconfig.json",
-    "test": "tsc --project tsconfig.json && node test.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "GPL-3.0-only",
-  "dependencies": {
-    "axios": "^0.27.2",
-    "chalk": "^4.1.2",
-    "discord.js": "^14.8.0",
-    "playwright": "^1.32.3",
-    "typescript": "^5.0.4",
-    "typia": "^3.7.6",
-    "ws": "^8.6.0",
-    "yarn": "^1.22.19"
-  },
-  "type": "module",
-  "devDependencies": {
-    "ts-node": "^10.9.1",
-    "ttypescript": "^1.5.15"
-  }
+    "name": "classcard",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.ts",
+    "scripts": {
+        "start": "tsc --project tsconfig.json && cd out && node discord_bot.js",
+        "compile": "tsc --project tsconfig.json"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "GPL-3.0-only",
+    "dependencies": {
+        "axios": "^0.27.2",
+        "chalk": "^4.1.2",
+        "discord.js": "^14.8.0",
+        "playwright": "^1.32.3",
+        "typescript": "^5.0.4",
+        "typia": "^3.7.6",
+        "ws": "^8.6.0",
+        "yarn": "^1.22.19"
+    },
+    "type": "module",
+    "devDependencies": {
+        "ts-node": "^10.9.1",
+        "ttypescript": "^1.5.15"
+    }
 }
