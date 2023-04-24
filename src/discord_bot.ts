@@ -18,8 +18,9 @@ import {
 } from "./classcard";
 import * as fs from "fs";
 import * as crypto from "crypto";
+import typia from "typia";
 
-type configfile = {
+type TConfigFile = {
     token: string;
     owners: string[];
     prefix: string;
@@ -28,24 +29,25 @@ type configfile = {
     ticketChannel: string;
     secret?: string;
 };
-let config: configfile = getConfigfile();
+let configFile: TConfigFile = getConfigfile();
 let secret: string =
-    config.secret && config.secret.length === 32
-        ? config.secret
+    configFile.secret && configFile.secret.length === 32
+        ? configFile.secret
         : randPassword(32);
 
-type user = {
-    id: string;
-    password: string;
-    channelID: string;
-    messageID: string;
-    setID: number;
-    classID: number;
+type TUser = {
+    classcard_id: string;
+    classcard_password: string;
+    classcard_classID: number;
+    classcard_setID: number;
+
+    discord_channelID: string;
+    discord_messageID: string;
 };
-if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
-let users: {
-    [key: string]: user;
-} = JSON.parse(fs.readFileSync("./users.json", "utf8"));
+type TUserMap = {
+    [key: string]: TUser;
+};
+let userMap: TUserMap = getUsers();
 
 let classes: { [id: string]: ClassCard } = {};
 let qbClasses: { [id: string]: QuizBattle } = {};
@@ -81,11 +83,10 @@ const discordClient: Client = new Client({
     ],
 });
 
-console.info("잠시만 기다려주세요.");
-// init users?
-await initUsers();
+console.info("user Initializing");
+userMap = await initializeUsers(configFile, userMap, secret);
 console.clear();
-discordClient.login(config.token);
+discordClient.login(configFile.token);
 
 process.on("unhandledRejection", (e) => console.error(e));
 process.on("uncaughtException", (e) => console.error(e));
@@ -96,17 +97,17 @@ discordClient.on("ready", () =>
 
 discordClient.on("interactionCreate", async (interaction) => {
     try {
-        if (!users[interaction.user.id])
-            users[interaction.user.id] = {
-                id: "",
-                password: "",
-                channelID: "",
-                messageID: "",
-                setID: 0,
-                classID: 0,
+        if (!userMap[interaction.user.id])
+            userMap[interaction.user.id] = {
+                classcard_id: "",
+                classcard_password: "",
+                discord_channelID: "",
+                discord_messageID: "",
+                classcard_setID: 0,
+                classcard_classID: 0,
             };
-        saveUsers();
-        const user = users[interaction.user.id];
+        saveUserMap(userMap);
+        const user = userMap[interaction.user.id];
         if (interaction.isButton()) {
             const channel = interaction.channel as TextChannel;
             if (
@@ -126,12 +127,12 @@ discordClient.on("interactionCreate", async (interaction) => {
                 });
             if (interaction.customId === "create_ticket") {
                 let channel = interaction.guild?.channels.cache.get(
-                    user.channelID
+                    user.discord_channelID
                 ) as TextChannel;
-                if (user.channelID && channel) await channel.delete();
+                if (user.discord_channelID && channel) await channel.delete();
                 channel = await (
                     interaction.guild?.channels.cache.get(
-                        config.ticketCategory
+                        configFile.ticketCategory
                     ) as CategoryChannel
                 ).children.create({
                     name: interaction.user.username.toLowerCase() /* ＃${interaction.user.discriminator} */,
@@ -141,7 +142,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                         " | USER: " +
                         interaction.user.id,
                 });
-                users[interaction.user.id].channelID = channel.id;
+                userMap[interaction.user.id].discord_channelID = channel.id;
                 if (!classes[interaction.user.id])
                     classes[interaction.user.id] = new ClassCard();
                 let message = (await updateMessage(
@@ -150,15 +151,15 @@ discordClient.on("interactionCreate", async (interaction) => {
                     "send"
                 )) as Message;
                 if (message.id)
-                    users[interaction.user.id].messageID = message.id;
+                    userMap[interaction.user.id].discord_messageID = message.id;
                 else {
-                    users[interaction.user.id].messageID = "";
-                    users[interaction.user.id].channelID = "";
-                    saveUsers();
+                    userMap[interaction.user.id].discord_messageID = "";
+                    userMap[interaction.user.id].discord_channelID = "";
+                    saveUserMap(userMap);
                     if (channel) channel.delete();
                     return;
                 }
-                saveUsers();
+                saveUserMap(userMap);
                 await channel.permissionOverwrites.create(interaction.user, {
                     ViewChannel: true,
                     SendMessages: true,
@@ -188,7 +189,10 @@ discordClient.on("interactionCreate", async (interaction) => {
                 });
                 return;
             }
-            if (interaction.customId.startsWith("s_") && !user.setID) {
+            if (
+                interaction.customId.startsWith("s_") &&
+                !user.classcard_setID
+            ) {
                 interaction.editReply({
                     embeds: [
                         new EmbedBuilder()
@@ -234,9 +238,9 @@ discordClient.on("interactionCreate", async (interaction) => {
                     .then(async (inter) => {
                         if (inter.customId !== "_yes") return false;
                         await channel.delete();
-                        users[interaction.user.id].channelID = "";
-                        users[interaction.user.id].messageID = "";
-                        saveUsers();
+                        userMap[interaction.user.id].discord_channelID = "";
+                        userMap[interaction.user.id].discord_messageID = "";
+                        saveUserMap(userMap);
                         return true;
                     })
                     .catch(() => false);
@@ -287,16 +291,16 @@ discordClient.on("interactionCreate", async (interaction) => {
                     })
                     .then(async (inter) => {
                         if (inter.customId !== "_yes") return false;
-                        users[interaction.user.id].id = "";
-                        users[interaction.user.id].password = "";
-                        users[interaction.user.id].setID = 0;
-                        users[interaction.user.id].classID = 0;
+                        userMap[interaction.user.id].classcard_id = "";
+                        userMap[interaction.user.id].classcard_password = "";
+                        userMap[interaction.user.id].classcard_setID = 0;
+                        userMap[interaction.user.id].classcard_classID = 0;
                         delete classes[interaction.user.id];
                         classes[interaction.user.id] = new ClassCard();
-                        saveUsers();
+                        saveUserMap(userMap);
                         updateMessage(
                             interaction.channel?.messages.cache.get(
-                                user.messageID
+                                user.discord_messageID
                             ),
                             interaction.user.id,
                             "edit"
@@ -500,10 +504,12 @@ discordClient.on("interactionCreate", async (interaction) => {
                     });
                     return;
                 }
-                users[interaction.user.id].classID = classId;
-                saveUsers();
+                userMap[interaction.user.id].classcard_classID = classId;
+                saveUserMap(userMap);
                 updateMessage(
-                    interaction.channel?.messages.cache.get(user.messageID),
+                    interaction.channel?.messages.cache.get(
+                        user.discord_messageID
+                    ),
                     interaction.user.id,
                     "edit"
                 );
@@ -544,7 +550,9 @@ discordClient.on("interactionCreate", async (interaction) => {
                     ]
                 );
                 updateMessage(
-                    interaction.channel?.messages.cache.get(user.messageID),
+                    interaction.channel?.messages.cache.get(
+                        user.discord_messageID
+                    ),
                     interaction.user.id,
                     "edit"
                 );
@@ -704,7 +712,9 @@ discordClient.on("interactionCreate", async (interaction) => {
             } else if (interaction.customId === "s_test") {
                 let result = await classes[interaction.user.id].postTest();
                 updateMessage(
-                    interaction.channel?.messages.cache.get(user.messageID),
+                    interaction.channel?.messages.cache.get(
+                        user.discord_messageID
+                    ),
                     interaction.user.id,
                     "edit"
                 );
@@ -1320,13 +1330,19 @@ discordClient.on("interactionCreate", async (interaction) => {
                     password
                 );
                 if (loginResult?.success) {
-                    users[interaction.user.id].id = encrypt(id);
-                    users[interaction.user.id].password = encrypt(password);
-                    users[interaction.user.id].setID = 0;
-                    users[interaction.user.id].classID = 0;
-                    saveUsers();
+                    userMap[interaction.user.id].classcard_id = encryptBySecret(
+                        id,
+                        secret
+                    );
+                    userMap[interaction.user.id].classcard_password =
+                        encryptBySecret(password, secret);
+                    userMap[interaction.user.id].classcard_setID = 0;
+                    userMap[interaction.user.id].classcard_classID = 0;
+                    saveUserMap(userMap);
                     updateMessage(
-                        interaction.channel?.messages.cache.get(user.messageID),
+                        interaction.channel?.messages.cache.get(
+                            user.discord_messageID
+                        ),
                         interaction.user.id,
                         "edit"
                     );
@@ -1362,10 +1378,12 @@ discordClient.on("interactionCreate", async (interaction) => {
                 );
                 let result = await classes[interaction.user.id].setSet(setID);
                 if (result?.success) {
-                    users[interaction.user.id].setID = setID;
-                    saveUsers();
+                    userMap[interaction.user.id].classcard_setID = setID;
+                    saveUserMap(userMap);
                     updateMessage(
-                        interaction.channel?.messages.cache.get(user.messageID),
+                        interaction.channel?.messages.cache.get(
+                            user.discord_messageID
+                        ),
                         interaction.user.id,
                         "edit"
                     );
@@ -1412,18 +1430,18 @@ discordClient.on("interactionCreate", async (interaction) => {
 });
 
 discordClient.on("messageCreate", async (message: Message) => {
-    if (message.content.startsWith(config.prefix)) {
-        const args = message.content.slice(config.prefix.length).split(" ");
+    if (message.content.startsWith(configFile.prefix)) {
+        const args = message.content.slice(configFile.prefix.length).split(" ");
         const cmd = args.shift()!.toLowerCase();
-        if (config.owners.includes(message.author.id)) {
+        if (configFile.owners.includes(message.author.id)) {
             if (cmd === "setup" && !!message.guild) {
                 if (
-                    !!config.ticketCategory &&
-                    message.guild.channels.cache.has(config.ticketCategory)
+                    !!configFile.ticketCategory &&
+                    message.guild.channels.cache.has(configFile.ticketCategory)
                 ) {
                     let category: CategoryChannel =
                         message.guild.channels.cache.get(
-                            config.ticketCategory
+                            configFile.ticketCategory
                         ) as CategoryChannel;
                     await Promise.all(
                         category.children.cache.map(
@@ -1433,11 +1451,11 @@ discordClient.on("messageCreate", async (message: Message) => {
                     await category.delete();
                 }
                 if (
-                    !!config.ticketChannel &&
-                    message.guild.channels.cache.has(config.ticketChannel)
+                    !!configFile.ticketChannel &&
+                    message.guild.channels.cache.has(configFile.ticketChannel)
                 )
                     await message.guild.channels.cache
-                        .get(config.ticketChannel)
+                        .get(configFile.ticketChannel)
                         ?.delete();
                 let category = await message.guild.channels.create({
                     name: "TICKETS",
@@ -1456,7 +1474,7 @@ discordClient.on("messageCreate", async (message: Message) => {
                         },
                     ],
                 });
-                config.ticketCategory = category.id;
+                configFile.ticketCategory = category.id;
                 let channel = await category.children.create({
                     name: "사용",
                     topic:
@@ -1468,11 +1486,11 @@ discordClient.on("messageCreate", async (message: Message) => {
                     message.guild!.roles.everyone,
                     { ViewChannel: true }
                 );
-                config.ticketChannel = channel.id;
-                config.guild = message.guild.id;
+                configFile.ticketChannel = channel.id;
+                configFile.guild = message.guild.id;
                 fs.writeFileSync(
                     "./config.json",
-                    JSON.stringify(config, null, 4)
+                    typia.stringify<TConfigFile>(configFile)
                 );
                 await channel.send({
                     embeds: [
@@ -1534,100 +1552,138 @@ discordClient.on("messageCreate", async (message: Message) => {
     }
 });
 
-async function initUsers() {
+function getUsers() {
+    if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
+    let users: TUserMap = JSON.parse(fs.readFileSync("./users.json", "utf8"));
+    return users;
+}
+
+async function initializeUsers(
+    config: TConfigFile,
+    userMap: TUserMap,
+    secret: string
+): Promise<TUserMap> {
+    function zeroFillClasscardInfoFromUser(user: TUser): TUser {
+        user.classcard_id = "";
+        user.classcard_password = "";
+        user.classcard_setID = 0;
+        user.classcard_classID = 0;
+        return user;
+    }
     await Promise.all(
-        Object.keys(users).map(async (id) => {
-            let user = users[id];
+        Object.keys(userMap).map(async (id) => {
+            let user: TUser = userMap[id];
             try {
+                // init class
                 if (!classes[id]) classes[id] = new ClassCard();
 
-                if (decrypt(user.id) && decrypt(user.password)) {
-                    let res = await classes[id]
-                        .login(decrypt(user.id), decrypt(user.password))
+                // check login
+                // if the account infomation exist
+                if (
+                    decryptBySecret(user.classcard_id, secret) &&
+                    decryptBySecret(user.classcard_password, secret)
+                ) {
+                    //try to login
+                    const loginSuccess = await classes[id]
+                        .login(
+                            decryptBySecret(user.classcard_id, secret),
+                            decryptBySecret(user.classcard_password, secret)
+                        )
                         .then((res) => res?.success);
-                    if (!res) {
-                        user.id = "";
-                        user.password = "";
-                        user.setID = 0;
-                        user.classID = 0;
+                    // when the infomation is invalid
+                    if (!loginSuccess) {
+                        user = zeroFillClasscardInfoFromUser(user);
                     }
                 } else {
-                    user.id = "";
-                    user.password = "";
-                    user.setID = 0;
-                    user.classID = 0;
+                    user = zeroFillClasscardInfoFromUser(user);
                 }
+
+                // if the class id exist, but invalid
                 if (
-                    user.classID &&
+                    user.classcard_classID &&
                     !(await classes[id]
-                        .setClass(user.classID)
+                        .setClass(user.classcard_classID)
                         .then((res) => res?.success))
-                )
-                    user.classID = 0;
+                ) {
+                    user.classcard_classID = 0;
+                }
+                // if the set id exist, but invalid
                 if (
-                    user.setID &&
+                    user.classcard_setID &&
                     !(await classes[id]
-                        .setSet(user.setID)
+                        .setSet(user.classcard_setID)
                         .then((res) => res?.success))
-                )
-                    user.setID = 0;
-                saveUsers();
-                if (user.channelID && user.messageID)
+                ) {
+                    user.classcard_setID = 0;
+                }
+                userMap[id] = user;
+                saveUserMap(userMap);
+
+                // TODO: 일단 읽고 그럴듯한걸로 뇌피셜 씨부려놓음. 확인 필요. 근데 진짜 코드가 뭔소린지 모르겠음... 출제자의 의도 파악 문제급....
+                if (user.discord_channelID && user.discord_messageID) {
                     discordClient.once("ready", async () => {
-                        if (!user.channelID || !user.messageID) return;
+                        // check guild
                         let guild = discordClient.guilds.cache.get(
                             config.guild
                         );
                         if (!guild) return;
+
+                        //check channel
                         let channel = guild.channels.cache.get(
-                            user.channelID
+                            user.discord_channelID
                         ) as TextChannel;
                         if (!channel) return;
+
+                        //check users interactive message
                         let message = await channel.messages
-                            .fetch(user.messageID)
+                            .fetch(user.discord_messageID)
                             .catch(() => undefined);
                         if (!message) {
                             channel.delete();
-                            user.channelID = "";
-                            user.messageID = "";
-                            saveUsers();
+                            user.discord_channelID = "";
+                            user.discord_messageID = "";
+                            saveUserMap(userMap);
                             return;
                         }
+
                         updateMessage(message, id, "edit");
                     });
+                }
             } catch {}
-            users[id] = user;
         })
     );
+    return userMap;
 }
 
-function getConfigfile() {
+function getConfigfile(): TConfigFile {
+    // init config file
     if (!fs.existsSync("./config.json")) {
         fs.writeFileSync(
             "./config.json",
-            JSON.stringify(
-                {
-                    token: "discord bot token",
-                    owners: ["id of owner of the bot"],
-                    prefix: "!",
-                    guild: "",
-                    ticketCategory: "",
-                    ticketChannel: "",
-                },
-                null,
-                4
-            )
+            typia.stringify<TConfigFile>({
+                token: "discord bot token",
+                owners: ["discord id of owner of the bot"],
+                prefix: "!",
+                guild: "",
+                ticketCategory: "",
+                ticketChannel: "",
+            })
         );
-        console.info("config.json 설정좀");
+        console.info("Please config config.json file.");
         process.exit(0);
     }
-    let config: configfile = JSON.parse(
-        fs.readFileSync("./config.json", "utf8")
-    );
-    return config;
+    let config: TConfigFile;
+    const file = JSON.parse(fs.readFileSync("./config.json", "utf8"));
+    try {
+        config = typia.assertParse<TConfigFile>(file);
+        return config;
+    } catch {
+        console.error("invalid config.js file!");
+        process.exit(0);
+    }
 }
 
-function encrypt(text: string): string {
+function encryptBySecret(text: string, secret: string): string {
     try {
         let iv = crypto.randomBytes(8).toString("hex");
         const cipher = crypto.createCipheriv("aes-256-cbc", secret, iv);
@@ -1639,10 +1695,7 @@ function encrypt(text: string): string {
     }
 }
 
-/**
- * @deprecated
- */
-function decrypt(text: string): string {
+function decryptBySecret(text: string, secret: string): string {
     try {
         let text2: string[] = text.split("'");
         const decipher = crypto.createDecipheriv(
@@ -1668,7 +1721,10 @@ async function updateMessage(
         let disableMode = "";
         if (!classes[userID].set.id || !classes[userID].class.id)
             disableMode = "set";
-        if (!users[userID].id || !users[userID].password)
+        if (
+            !userMap[userID].classcard_id ||
+            !userMap[userID].classcard_password
+        )
             disableMode = "idPass";
         let disabled = disableMode === "idPass" || disableMode === "set";
         let components = [
@@ -1831,18 +1887,21 @@ async function updateMessage(
             if (rf)
                 await classes[userID]
                     .login(
-                        decrypt(users[userID].id),
-                        decrypt(users[userID].password)
+                        decryptBySecret(userMap[userID].classcard_id, secret),
+                        decryptBySecret(
+                            userMap[userID].classcard_password,
+                            secret
+                        )
                     )
                     .then((res) => {
                         if (!res?.success) {
-                            users[userID].id = "";
-                            users[userID].password = "";
-                            users[userID].setID = 0;
-                            users[userID].classID = 0;
+                            userMap[userID].classcard_id = "";
+                            userMap[userID].classcard_password = "";
+                            userMap[userID].classcard_setID = 0;
+                            userMap[userID].classcard_classID = 0;
                             fs.writeFileSync(
                                 "./users.json",
-                                JSON.stringify(users, null, 4)
+                                JSON.stringify(userMap, null, 4)
                             );
                             classes[userID] = new ClassCard();
                             updateMessage(message, userID, s, false);
@@ -1943,12 +2002,8 @@ async function updateMessage(
     } catch (e) {}
 }
 
-// function sleep(ms: number): Promise<void> {
-//     return new Promise(resolve => setTimeout(resolve, ms));
-// };
-
-function saveUsers(): void {
-    fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+function saveUserMap(userMap: TUserMap): void {
+    fs.writeFileSync("./users.json", typia.stringify<TUserMap>(userMap));
 }
 
 //ExpressVPN security tools -> Password Generator URL: https://www.expressvpn.com/password-generator
