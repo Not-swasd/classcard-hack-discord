@@ -10,12 +10,12 @@ import {
     ChannelType,
 } from "discord.js";
 import {
-    Activity,
-    ClassCard,
+    EActivity,
+    CardSet,
     QuizBattle,
-    SetType,
-    BattleQuest,
-} from "./classcard";
+    ESetType,
+    TBattleQuest,
+} from "./classcard.js";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import typia from "typia";
@@ -49,7 +49,7 @@ type TUserMap = {
 };
 let userMap: TUserMap = getUsers();
 
-let classes: { [id: string]: ClassCard } = {};
+let classes: { [id: string]: CardSet } = {};
 let qbClasses: { [id: string]: QuizBattle } = {};
 
 const discordClient: Client = new Client({
@@ -85,7 +85,6 @@ const discordClient: Client = new Client({
 
 console.info("user Initializing");
 userMap = await initializeUsers(configFile, userMap, secret);
-console.clear();
 discordClient.login(configFile.token);
 
 process.on("unhandledRejection", (e) => console.error(e));
@@ -97,16 +96,18 @@ discordClient.on("ready", () =>
 
 discordClient.on("interactionCreate", async (interaction) => {
     try {
-        if (!userMap[interaction.user.id])
+        if (!userMap[interaction.user.id]) {
             userMap[interaction.user.id] = {
                 classcard_id: "",
                 classcard_password: "",
-                discord_channelID: "",
-                discord_messageID: "",
                 classcard_setID: 0,
                 classcard_classID: 0,
+                discord_channelID: "",
+                discord_messageID: "",
             };
+        }
         saveUserMap(userMap);
+
         const user = userMap[interaction.user.id];
         if (interaction.isButton()) {
             const channel = interaction.channel as TextChannel;
@@ -114,8 +115,9 @@ discordClient.on("interactionCreate", async (interaction) => {
                 !channel.topic?.includes(
                     "Created By " + discordClient.user?.username
                 )
-            )
+            ) {
                 return;
+            }
             if (!interaction.customId.startsWith("_"))
                 await interaction.reply({
                     embeds: [
@@ -144,7 +146,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                 });
                 userMap[interaction.user.id].discord_channelID = channel.id;
                 if (!classes[interaction.user.id])
-                    classes[interaction.user.id] = new ClassCard();
+                    classes[interaction.user.id] = new CardSet();
                 let message = (await updateMessage(
                     channel,
                     interaction.user.id,
@@ -296,7 +298,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                         userMap[interaction.user.id].classcard_setID = 0;
                         userMap[interaction.user.id].classcard_classID = 0;
                         delete classes[interaction.user.id];
-                        classes[interaction.user.id] = new ClassCard();
+                        classes[interaction.user.id] = new CardSet();
                         saveUserMap(userMap);
                         updateMessage(
                             interaction.channel?.messages.cache.get(
@@ -541,7 +543,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                 )
             ) {
                 let result = await classes[interaction.user.id].sendLearnAll(
-                    Activity[
+                    EActivity[
                         interaction.customId === "s_memorize"
                             ? "Memorize"
                             : interaction.customId === "s_recall"
@@ -657,8 +659,8 @@ discordClient.on("interactionCreate", async (interaction) => {
                 }
                 let result = await classes[interaction.user.id].addGameScore(
                     interaction.customId === "s_match_scramble"
-                        ? Activity["매칭"]
-                        : Activity["크래시"],
+                        ? EActivity["매칭"]
+                        : EActivity["크래시"],
                     score,
                     true
                 );
@@ -894,7 +896,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                 });
                 quizBattle.on("start", async () => {
                     try {
-                        var next: BattleQuest =
+                        var next: TBattleQuest =
                             quizBattle.battleInfo.quest_list[0];
                         while (!end) {
                             let firstLine = {
@@ -1324,7 +1326,7 @@ discordClient.on("interactionCreate", async (interaction) => {
                 const id = interaction.fields.getTextInputValue("id");
                 const password =
                     interaction.fields.getTextInputValue("password");
-                classes[interaction.user.id] = new ClassCard();
+                classes[interaction.user.id] = new CardSet();
                 let loginResult = await classes[interaction.user.id].login(
                     id,
                     password
@@ -1575,7 +1577,7 @@ async function initializeUsers(
             let user: TUser = userMap[id];
             try {
                 // init class
-                if (!classes[id]) classes[id] = new ClassCard();
+                if (!classes[id]) classes[id] = new CardSet();
 
                 // check login
                 // if the account infomation exist
@@ -1673,7 +1675,7 @@ function getConfigfile(): TConfigFile {
         process.exit(0);
     }
     let config: TConfigFile;
-    const file = JSON.parse(fs.readFileSync("./config.json", "utf8"));
+    const file = fs.readFileSync("./config.json", "utf8");
     try {
         config = typia.assertParse<TConfigFile>(file);
         return config;
@@ -1719,7 +1721,7 @@ async function updateMessage(
 ): Promise<Message<boolean> | undefined> {
     try {
         let disableMode = "";
-        if (!classes[userID].set.id || !classes[userID].class.id)
+        if (!classes[userID].targetCardSet.id || !classes[userID].class.id)
             disableMode = "set";
         if (
             !userMap[userID].classcard_id ||
@@ -1785,8 +1787,8 @@ async function updateMessage(
             };
             if (!classes[userID].class.id) row.components.pop();
             if (
-                classes[userID].set.type !== SetType["word"] &&
-                classes[userID].set.type !== SetType["sentence"]
+                classes[userID].targetCardSet.type !== ESetType["word"] &&
+                classes[userID].targetCardSet.type !== ESetType["sentence"]
             )
                 for (let i = 0; i < 3; i++) row.components.shift();
             if (row.components.length > 0) components.push(row);
@@ -1812,8 +1814,8 @@ async function updateMessage(
         });
         if (
             !disabled &&
-            (classes[userID].set.type === SetType["word"] ||
-                classes[userID].set.type === SetType["sentence"])
+            (classes[userID].targetCardSet.type === ESetType["word"] ||
+                classes[userID].targetCardSet.type === ESetType["sentence"])
         ) {
             components.at(-1)!.components.unshift(
                 {
@@ -1903,7 +1905,7 @@ async function updateMessage(
                                 "./users.json",
                                 JSON.stringify(userMap, null, 4)
                             );
-                            classes[userID] = new ClassCard();
+                            classes[userID] = new CardSet();
                             updateMessage(message, userID, s, false);
                             throw new Error("invalid id or password.");
                         }
@@ -1911,7 +1913,7 @@ async function updateMessage(
             embed.setTitle("계정 정보").addFields([
                 {
                     name: "이름",
-                    value: `**${classes[userID].user.name}**`,
+                    value: `**${classes[userID].account.name}**`,
                     inline: true,
                 },
             ]);
@@ -1924,7 +1926,7 @@ async function updateMessage(
                 .addFields([
                     {
                         name: "세트 이름[idx]",
-                        value: `${classes[userID].set.name}[${classes[userID].set.id}]`,
+                        value: `${classes[userID].targetCardSet.name}[${classes[userID].targetCardSet.id}]`,
                         inline: true,
                     },
                     {
@@ -1934,22 +1936,23 @@ async function updateMessage(
                     },
                     {
                         name: "세트 종류",
-                        value: SetType[classes[userID].set.type],
+                        value: ESetType[classes[userID].targetCardSet.type],
                         inline: true,
                     },
                     {
                         name: "카드 개수",
                         value:
-                            String(classes[userID].set.study_data!.length) +
-                            "개",
+                            String(
+                                classes[userID].targetCardSet.study_data!.length
+                            ) + "개",
                         inline: true,
                     },
                 ])
                 .setColor("Green");
             if (total && total.data) {
                 if (
-                    classes[userID].set.type === SetType["word"] ||
-                    classes[userID].set.type === SetType["sentence"]
+                    classes[userID].targetCardSet.type === ESetType["word"] ||
+                    classes[userID].targetCardSet.type === ESetType["sentence"]
                 )
                     embed.addFields([
                         {

@@ -1,21 +1,21 @@
-import axios, { AxiosInstance } from "axios";
+import axios, { Axios, AxiosInstance } from "axios";
 import Websocket from "ws";
 import EventEmitter from "events";
 import { URLSearchParams } from "url";
 import qs from "querystring";
 
-type Folder = {
+type TFolder = {
     id: number;
     name: string;
     default: boolean;
 };
 
-type Class = {
+type TClass = {
     id: number;
     name: string;
 };
 
-type User = {
+type TAccount = {
     name: string;
     id: number;
     token: string;
@@ -23,26 +23,26 @@ type User = {
     isTeacher: boolean;
 };
 
-enum UserType {
+enum EUserType {
     "teacher" = 1,
     "student",
 }
 
-enum SchoolType {
+enum ESchoolType {
     "school" = 1,
     "hakwon",
 }
 
-type Card = {
+type TCard = {
     card_idx: number;
 };
 
-type fm_user_set_log = {
+type Tfm_account_set_log = {
     bookmark_yn: string;
     class_idx: string;
     deleted: string;
     last_card: string;
-    last_learn_activity: Activity;
+    last_learn_activity: EActivity;
     last_learn_activity_progress: string;
     last_learn_date: string;
     last_round: string;
@@ -57,14 +57,14 @@ type fm_user_set_log = {
     view_type: string;
 };
 
-type ClassSet = {
+type TCardSet = {
     id: number;
     name: string;
     type: number;
     lastLearnDate: string;
-    study_data: Card[];
+    study_data: TCard[];
     dirty: boolean;
-    log: fm_user_set_log;
+    log: Tfm_account_set_log;
 };
 
 type sync_set_class_v3_ResponseData = {
@@ -72,7 +72,7 @@ type sync_set_class_v3_ResponseData = {
         set_idx: string;
         user_idx: string;
         name: string;
-        set_type: SetType;
+        set_type: ESetType;
         front_lang: string;
         back_lang: string;
         map_img_path: string;
@@ -101,11 +101,11 @@ type sync_set_class_v3_ResponseData = {
             school_type: string;
         };
     }[];
-    fm_user_set_log: fm_user_set_log[];
+    fm_account_set_log: Tfm_account_set_log[];
     fm_class: any[];
     g_class: any[];
     fm_class_set: any[];
-    fm_user_class_learn_set: any;
+    fm_account_class_learn_set: any;
     cc_new_cnt: string;
 };
 
@@ -113,7 +113,7 @@ type sets_v4_ResponseData = {
     set_idx: string;
     user_idx: string;
     name: string;
-    set_type: SetType;
+    set_type: ESetType;
     front_lang: string;
     back_lang: string;
     map_img_path: string;
@@ -125,7 +125,7 @@ type sets_v4_ResponseData = {
     map_type: string;
     map_box_color: string;
     card_cnt: string;
-    std_user_idx: string;
+    std_account_idx: string;
     test_status: string;
     test_finish_date: string;
     test_type: string;
@@ -145,7 +145,7 @@ type sets_v4_ResponseData = {
     learner_cnt: string;
 }[];
 
-enum SetType {
+enum ESetType {
     "word" = 1, // 단어
     "term", // 용어
     "quest" = 4, // 문제
@@ -155,13 +155,13 @@ enum SetType {
     "answer", // 정답
 }
 
-enum LearnType {
+enum ELearnType {
     "암기학습" = "Memorize",
     "리콜학습" = "Recall",
     "스펠학습" = "Spell",
 }
 
-enum Activity {
+enum EActivity {
     "Memorize" = 1,
     "Recall",
     "Spell",
@@ -191,428 +191,31 @@ const defaultLogObject = {
     view_type: "6",
 };
 
-export default class ClassCard {
+/**
+ * Account class
+ */
+export class Account {
     private client: AxiosInstance;
-    private _set: ClassSet;
-    private _class: Class;
-    private _user: User;
-    private last_ts: string;
-    constructor() {
-        this.client = axios.create({
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20A392 [FBAN/FBIOS;FBDV/iPhone15,3;FBMD/iPhone;FBSN/iOS;FBSV/16.0.3;FBSS/3;FBID/phone;FBLC/es_LA;FBOP/5] ClassCard/1.0.339 u_idx:0",
-            },
-        });
+    private _account: TAccount;
+    constructor(client: AxiosInstance, account: TAccount) {
+        this.client = client;
         this.client.interceptors.response.use(
             (response) => {
                 if (
                     response.data?.result?.s_ts &&
                     response.data.result.s_ts.length
                 )
-                    this.last_ts = response.data.result.s_ts;
-                return response;
+                    return response;
             },
             function (error) {
                 return Promise.reject(error);
             }
         );
-        this._set = {
-            id: 0,
-            name: "",
-            type: 0,
-            lastLearnDate: "",
-            study_data: [],
-            dirty: false,
-            log: JSON.parse(JSON.stringify(defaultLogObject)),
-        };
-        this._class = {
-            id: 0,
-            name: "",
-        };
-        this._user = {
-            name: "",
-            id: 0,
-            token: "",
-            isPro: false,
-            isTeacher: false,
-        };
-        this.last_ts = "";
+        this._account = account;
     }
 
-    public get set() {
-        return this._set;
-    }
-
-    public get class() {
-        return this._class;
-    }
-
-    public get user() {
-        return this._user;
-    }
-
-    public async login(id: string, password: string) {
-        try {
-            var res = await this.client
-                .post(
-                    `https://${n}.classcard.net/api/users/login`,
-                    qs.stringify({
-                        login: 1,
-                        id: id,
-                        pw: password,
-                    }),
-                    {
-                        headers: {
-                            "Content-Type": "application/x-www-form-urlencoded",
-                            security_id: "20ff464a2eeeec5588a7acc3408adf0d",
-                        },
-                    }
-                )
-                .catch((x) => x?.response || x);
-            if (res?.data?.result?.code !== 200)
-                throw new Error("아이디 또는 비밀번호를 확인해주세요. (0)", {
-                    cause: res,
-                });
-            this._user = {
-                isTeacher: res.data.res_data.user_type === 1,
-                name: res.data.res_data.name,
-                id: res.data.res_data.user_idx,
-                isPro:
-                    typeof Number(res.data.res_data.b_s_idx) === "number" &&
-                    Number(res.data.res_data.b_s_idx) > 0,
-                token: res.data.res_data.token,
-            };
-            (this.client.defaults.headers as any)["Authorization"] =
-                this._user.id + " " + this._user.token;
-            (this.client.defaults.headers as any)["User-Agent"] = String(
-                (this.client.defaults.headers as any)["User-Agent"]
-            ).replace("u_idx:0", "u_idx:" + this._user.id);
-            this._set.log.user_idx = String(this._user.id);
-            return {
-                success: true,
-                message: "로그인 성공",
-                data: res.data,
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
-    public async sendLearnAll(activity: Activity) {
-        try {
-            if (!this._set.id || !this._class.id)
-                throw new Error(
-                    (!this._class.id
-                        ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요."
-                        : "세트 아이디 또는 클래스 아이디를 설정해야합니다.") +
-                        " (0)"
-                );
-            let before: number | undefined;
-            let after: number;
-            while (typeof before !== "number")
-                before = await this.getTotal(false).then((t) =>
-                    t.data
-                        ? t.data[
-                              Activity[activity] as
-                                  | "Memorize"
-                                  | "Recall"
-                                  | "Spell"
-                          ]
-                        : undefined
-                );
-            // console.log(before, "bef");
-            let params = new URLSearchParams();
-            let cardLogDate = Date.now();
-            var card_log_ts = ClassCard.getTimestamp(cardLogDate);
-            let p = {
-                base_info: {
-                    s_ts: "",
-                    set_idx: "",
-                    user_idx: this._user.id,
-                },
-                req_data: {
-                    fm_user_card_log: [
-                        {
-                            activity: activity,
-                            card_idx: -1,
-                            class_idx: this._class.id,
-                            deleted: 0,
-                            score: Math.floor(before / 100) + 1,
-                            set_idx: this._set.id,
-                            ts: card_log_ts,
-                            user_idx: this._user.id,
-                        },
-                    ],
-                    fm_user_class_learn_set: [],
-                    fm_user_play_score: [],
-                    fm_user_set_log: [] as any,
-                },
-            };
-            let obj: {
-                [key in Activity]:
-                    | "mem_learn_card_cnt"
-                    | "recall_learn_card_cnt"
-                    | "spell_learn_card_cnt";
-            } = {} as any;
-            obj[Activity["Memorize"]] = "mem_learn_card_cnt";
-            obj[Activity["Recall"]] = "recall_learn_card_cnt";
-            obj[Activity["Spell"]] = "spell_learn_card_cnt";
-            for (const card of this._set.study_data) {
-                p.req_data.fm_user_card_log.push({
-                    activity: activity,
-                    card_idx: card.card_idx,
-                    class_idx: this._class.id,
-                    deleted: 1,
-                    score: 1,
-                    set_idx: this._set.id as number,
-                    ts: card_log_ts,
-                    user_idx: this._user.id,
-                });
-                this._set.log[obj[activity]] = String(
-                    Number(this._set.log[obj[activity]]) + 1
-                );
-            }
-            p.req_data.fm_user_set_log.push({
-                bookmark_yn: "0",
-                class_idx: this._class.id,
-                deleted: "0",
-                dirty: this._set.dirty ? 1 : 0,
-                last_card: p.req_data.fm_user_card_log.at(-1)?.card_idx,
-                last_learn_activity: activity,
-                last_learn_activity_progress:
-                    this._set.log.last_learn_activity_progress,
-                last_learn_date: ClassCard.getTimestamp(
-                    Date.now() - this._set.study_data.length * 100
-                ),
-                last_round: this._set.log.last_round,
-                last_section: this._set.log.last_section,
-                learn_status: this._set.log.learn_status,
-                mem_learn_card_cnt: this._set.log["mem_learn_card_cnt"],
-                recall_learn_card_cnt: this._set.log["recall_learn_card_cnt"],
-                spell_learn_card_cnt: this._set.log["spell_learn_card_cnt"],
-                reg_date: "",
-                section_size: 10, // 한 구간 당 카드 개수 (정확하지 않음) this._set.study_data.length < 10 ? 10 : this._set.study_data.length
-                set_idx: this._set.id,
-                study_type: "0", //알 수 없음
-                ts: ClassCard.getTimestamp(cardLogDate - 1000),
-                user_idx: this._user.id,
-                view_type: "6", // 학습단위. n개씩 구간 단위로 학습: 1; 중요 카드 학습: 4; 전체 카드 학습: 6
-            });
-            params.append("p", JSON.stringify(p));
-            const response = await this.client
-                .post(
-                    `https://${n}.classcard.net/sync/upsync_user_study_log`,
-                    params
-                )
-                .catch(() => undefined);
-            if (response?.data?.result?.code !== 200)
-                throw new Error("서버와의 통신에 실패했습니다. (1)");
-            const fm_user_set_log: sync_set_class_v3_ResponseData["fm_user_set_log"] =
-                response.data.res_data.fm_user_set_log;
-            if (fm_user_set_log.find((x) => x.set_idx == String(this._set.id)))
-                this._set.log = fm_user_set_log.find(
-                    (x) => x.set_idx == String(this._set.id)
-                )!;
-            after = await this.getTotal(false).then(
-                (t) =>
-                    t.data![
-                        Activity[activity] as "Memorize" | "Recall" | "Spell"
-                    ] || 0
-            );
-            // console.log("aft", after);
-            return {
-                success: true,
-                message: "성공",
-                data: {
-                    before,
-                    after,
-                },
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
-    public async addGameScore(
-        game: Activity,
-        score: number,
-        fetchRank?: boolean
-    ) {
-        try {
-            if (!this._set.id || !this._class.id)
-                throw new Error(
-                    (!this._class.id
-                        ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요."
-                        : "세트 아이디 또는 클래스 아이디를 설정해야합니다.") +
-                        " (0)"
-                );
-            if (![4, 5].includes(game))
-                throw new Error("지원하지 않는 게임입니다. (1)");
-            let params = new URLSearchParams();
-            params.append(
-                "p",
-                JSON.stringify({
-                    base_info: {
-                        s_ts: "",
-                        set_idx: this._set.id.toString(),
-                        user_idx: this._user.id.toString(),
-                    },
-                    req_data: {
-                        fm_user_card_log: [],
-                        fm_user_class_learn_set: [],
-                        fm_user_play_score: [
-                            {
-                                activity: game,
-                                class_idx: this._class.id,
-                                score: score,
-                                score_idx: 0, // 알 수 없음
-                                set_idx: this._set.id,
-                                user_idx: this._user.id,
-                            },
-                        ],
-                        fm_user_set_log: [],
-                    },
-                })
-            );
-            let res = await this.client
-                .post(
-                    `https://${n}.classcard.net/sync/upsync_user_study_log`,
-                    params
-                )
-                .catch((x) => x?.response || x);
-            if (
-                res?.data?.result?.code !== 200 ||
-                res.data.res_data.fm_user_play_score != 1
-            )
-                throw new Error("알 수 없는 오류가 발생했습니다. (2)", {
-                    cause: res,
-                });
-            let s_ts = res.data.result.s_ts;
-            let rank: { [key: string]: string | number | null } = {
-                class: null,
-                all: null,
-            };
-            if (fetchRank) {
-                try {
-                    let res = await this.client.get(
-                        `https://${n}.classcard.net/api/sets/activity_rank_combine_v2?class_idx=${this._class.id}&set_idx=${this._set.id}&activity=${game}&current_score=${score}&limit=100`
-                    );
-                    if (res.data.result.code !== 200)
-                        throw new Error("알 수 없는 오류가 발생했습니다. (3)", {
-                            cause: res,
-                        });
-                    for (const t of ["class", "all"]) {
-                        let rankObj = res.data[t + "_rank_list"].find(
-                            (x: any) =>
-                                x.user_idx === String(this._user.id) &&
-                                x.reg_date === s_ts
-                        );
-                        if (!rankObj)
-                            rank[t] =
-                                t === "class"
-                                    ? "오류"
-                                    : "순위가 100등 보다 낮습니다.";
-                        else rank[t] = rankObj.rank;
-                    }
-                } catch {}
-            }
-            return {
-                success: true,
-                message: "성공",
-                data: {
-                    rank,
-                },
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
-    public async getSet(setId: number) {
-        try {
-            if (!this._class.id)
-                throw new Error(
-                    "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요. (0)"
-                );
-            var classSets = await this.getSetsFromClass(this._class.id).then(
-                (x) => x?.data
-            );
-            if (!classSets)
-                throw new Error("알 수 없는 오류가 발생했습니다. (1)");
-            var params = new URLSearchParams();
-            params.append(
-                "p",
-                JSON.stringify({
-                    base_info: {
-                        answer_v: -1,
-                        class_idx: this._class.id.toString() || "",
-                        drill_v: -1,
-                        listen_v: -1,
-                        s_ts: "",
-                        set_idx: setId.toString(),
-                        user_idx: this._user.id.toString(),
-                    },
-                })
-            );
-            var cardRes = await this.client
-                .post(`https://${n}.classcard.net/sync/sync_card`, params)
-                .catch((x) => x?.response || x);
-            if (cardRes?.data?.result?.code !== 200)
-                throw new Error("알 수 없는 오류가 발생했습니다. (2)");
-            var set = classSets.find((x) => x.id == setId)!;
-            set.study_data =
-                cardRes.data.res_data.fm_card
-                    .map((x: any) => {
-                        return {
-                            card_idx: Number(x.card_idx),
-                        };
-                    })
-                    .filter((x: Card) => typeof x.card_idx === "number") || [];
-            return { success: true, message: "", data: set };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
-    public async setSet(setId: number) {
-        try {
-            let res = await this.getSet(setId);
-            if (!res?.success)
-                throw new Error((res?.message || "Unknown Error.") + " (0)", {
-                    cause: res,
-                });
-            this._set = res.data!;
-            this._set.log.set_idx = String(this._set.id);
-            this._set.log.section_size = String(this._set.study_data.length);
-            return {
-                success: true,
-                message: "세트가 설정되었습니다.",
-                data: this._set,
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
+    public get account() {
+        return this._account;
     }
 
     public async getClass(classId: number) {
@@ -637,279 +240,6 @@ export default class ClassCard {
             };
         }
     }
-
-    public async setClass(classId: number) {
-        try {
-            let res = await this.getClass(classId);
-            if (!res?.data)
-                throw new Error(res?.message + " (0)", { cause: res });
-            this._class = res.data;
-            this._set.log.class_idx = String(this._class.id);
-            return {
-                success: true,
-                message: "클래스가 설정되었습니다.",
-                data: this._set,
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
-    public async getTotal(getTestScore: boolean = true) {
-        try {
-            if (!this._set.id || !this._class.id)
-                throw new Error(
-                    (!this._class.id
-                        ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요."
-                        : "세트 아이디 또는 클래스 아이디를 설정해야합니다.") +
-                        " (0)"
-                );
-            let data: {
-                Memorize: number;
-                Recall: number;
-                Spell: number;
-                Test: number[];
-            } = {
-                Memorize: 0,
-                Recall: 0,
-                Spell: 0,
-                Test: [],
-            };
-            if (getTestScore)
-                try {
-                    let test_score_log: { score: string }[] = await this.client
-                        .get(
-                            `https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this._set.id}&class_idx=${this._class.id}`
-                        )
-                        .then((res) =>
-                            res.data.res_data.test_score_log.reverse()
-                        );
-                    data.Test = test_score_log.map((x) => Number(x.score));
-                } catch {
-                    data.Test = [];
-                }
-            let params = new URLSearchParams();
-            params.append(
-                "p",
-                JSON.stringify({
-                    base_info: {
-                        s_ts: "",
-                        set_idx: this._set.id || "",
-                        user_idx: this._user.id || "",
-                        // "answer_v": -1,
-                        // "listen_v": -1,
-                        // "drill_v": -1
-                    },
-                })
-            );
-            var sync_card: {
-                user_idx: string;
-                set_idx: string;
-                class_idx: string;
-                activity: string;
-                card_idx: string;
-                score: string;
-                deleted: string;
-                ts: string;
-            }[] = await this.client
-                .post(`https://${n}.classcard.net/sync/sync_card`, params)
-                .then((res) => res.data.res_data.fm_user_card_log)
-                .catch(() => undefined);
-            const globalFilter = (c: (typeof sync_card)[number]) =>
-                c.deleted === "0" &&
-                c.user_idx &&
-                c.set_idx &&
-                c.class_idx == String(this._class.id);
-
-            let done = sync_card.filter(
-                (c) => c.score === "1" && c.card_idx !== "-1" && globalFilter(c)
-            );
-            for (var t of ["Memorize", "Recall", "Spell"] as (
-                | "Memorize"
-                | "Recall"
-                | "Spell"
-            )[]) {
-                data[t] =
-                    Math.round(
-                        (done.filter((c) => c.activity === String(Activity[t]))
-                            .length /
-                            this._set.study_data.length!) *
-                            100 *
-                            1e2
-                    ) / 1e2;
-            }
-            let repeat = sync_card.filter(
-                (c) => c.card_idx === "-1" && globalFilter(c)
-            );
-            for (var t of ["Memorize", "Recall", "Spell"] as (
-                | "Memorize"
-                | "Recall"
-                | "Spell"
-            )[]) {
-                data[t] +=
-                    repeat
-                        .filter((c) => c.activity === String(Activity[t]))
-                        .map((c) => Number(c.score))
-                        .reduce((partialSum, a) => partialSum + a, 0) * 100;
-            }
-            // fs.writeFileSync("./sync_card__d_X.json", JSON.stringify(sync_card.filter(c => c.deleted === "0"), null, 4));
-            return {
-                success: true,
-                message: "성공",
-                data,
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
-    // 클래스가 무조건 설정되어야 세트에 대한 학습과 게임을 할 수 있기때문에 클래스만 남김.
-    public async getSetsFromClass(classId: number) {
-        // folderName: "클래스" | "이용한 세트" | "만든 세트" | string
-        try {
-            // if (folderName === "클래스" && !classId) throw new Error("클래스 아이디를 인자로 전달해야 합니다. (0)");
-            let sets: ClassSet[] = [];
-            const syncedData = (await this.getSyncedData()).data;
-            if (!syncedData)
-                throw new Error("데이터를 가져오는데 실패했습니다. (0)");
-            // if (folderName === "이용한 세트" || folderName === "만든 세트") {
-            //     sets = syncedData.res_data.fm_set
-            //         .filter(set => Number(set.set_idx) > 0 && set.is_wrong_answer === "0" && set.deleted === "0" && (folderName === "이용한 세트" ? syncedData.res_data.fm_user_set_log.find(s => s.set_idx === set.set_idx) : Number(set.user_idx) == this._user.id))
-            //         .map(set => {
-            //             return {
-            //                 id: Number(set.set_idx),
-            //                 name: set.name,
-            //                 type: Number(set.set_type),
-            //                 lastLearnDate: syncedData.res_data.fm_user_set_log.find(s => s.set_idx === set.set_idx)?.last_learn_date || ""
-            //             };
-            //         });
-            // } else {
-            //     var folders = await this.getFolders().then(r => r?.data || []);
-            //     let res = await this.client.get(folderName === "클래스" ? (`https://${n}.classcard.net/api/classes/sets_v4?class_idx=${classId}`) : `https://${n}.classcard.net/api/sets/folder_sets?sl_idx=${folders.find(f => f.name === folderName)?.id}&offset=1&limit=1000&ft=`).catch(x => x?.response || x);
-            //     if (res?.data?.result?.code !== 200) throw new Error("세트 목록을 가져오는 중 오류가 발생했습니다. (2)", { cause: res });
-            //     if (folderName === "클래스" && classId) await this.setClass(classId).then(r => {
-            //         if (!r?.success) throw new Error((r?.message || "알 수 없는 오류가 발생했습니다.") + " (3)", { cause: r });
-            //     });
-            //     sets = (res.data.res_data as { set_idx: string, name?: string, set_name?: string, set_type: string }[]).map(set => {
-            //         return {
-            //             id: Number(set.set_idx),
-            //             name: set.name || set.set_name || "",
-            //             type: Number(set.set_type),
-            //             lastLearnDate: syncedData.res_data.fm_user_set_log.find(s => s.set_idx === set.set_idx)?.last_learn_date || ""
-            //         };
-            //     });
-            // };
-            const res = await this.client
-                .get(
-                    `https://${n}.classcard.net/api/classes/sets_v4?class_idx=${classId}`
-                )
-                .catch((x) => x?.response || x);
-            if (res?.data?.result?.code !== 200)
-                throw new Error(
-                    "세트 목록을 가져오는 중 오류가 발생했습니다. (2)",
-                    {
-                        cause: res,
-                    }
-                );
-            const data: sets_v4_ResponseData = res.data.res_data;
-            await this.setClass(classId).then((r) => {
-                if (!r?.success)
-                    throw new Error(
-                        (r?.message || "알 수 없는 오류가 발생했습니다.") +
-                            " (3)",
-                        { cause: r }
-                    );
-            });
-            sets = data.map((set) => {
-                return {
-                    id: Number(set.set_idx),
-                    name: set.name,
-                    type: Number(set.set_type),
-                    lastLearnDate:
-                        syncedData.fm_user_set_log.find(
-                            (s) => s.set_idx === set.set_idx
-                        )?.last_learn_date || "",
-                    dirty: set.dirty === "1",
-                    study_data: [],
-                    log:
-                        syncedData.fm_user_set_log.find(
-                            (s) => s.set_idx === set.set_idx
-                        ) ||
-                        Object.assign(
-                            JSON.parse(JSON.stringify(defaultLogObject)),
-                            {
-                                set_idx: set.set_idx,
-                                user_idx: this._user.id,
-                                class_idx: classId,
-                                last_learn_date: ClassCard.getTimestamp(),
-                                section_size: "10",
-                            }
-                        ),
-                };
-            });
-            return {
-                success: true,
-                message: "성공",
-                data: sets,
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
-    public async getSyncedData() {
-        try {
-            let params = new URLSearchParams();
-            params.append(
-                "p",
-                JSON.stringify({
-                    base_info: {
-                        g_class_full_sync: 1,
-                        s_ts: "",
-                        set_idx: "",
-                        user_idx: this._user.id,
-                    },
-                })
-            );
-            const response = await this.client
-                .post(
-                    `https://${n}.classcard.net/sync/sync_set_class_v3`,
-                    params
-                )
-                .catch((x) => x?.response || x);
-            if (response?.data?.result?.code !== 200)
-                throw new Error(
-                    "데이터를 동기화하는 중 오류가 발생했습니다. (0)",
-                    {
-                        cause: response,
-                    }
-                );
-            return {
-                success: true,
-                message: "성공",
-                data: response.data.res_data as sync_set_class_v3_ResponseData,
-            };
-        } catch (e) {
-            return {
-                success: false,
-                message: (e as Error).message,
-                error: e as Error,
-            };
-        }
-    }
-
     public async getClasses() {
         try {
             let params = new URLSearchParams();
@@ -920,7 +250,7 @@ export default class ClassCard {
                         g_class_full_sync: 1,
                         s_ts: "",
                         set_idx: "",
-                        user_idx: this._user.id,
+                        user_idx: this._account.id,
                     },
                 })
             );
@@ -987,7 +317,7 @@ export default class ClassCard {
                         cause: res,
                     }
                 );
-            let folders: Folder[] = [
+            let folders: TFolder[] = [
                 {
                     name: "이용한 세트",
                     id: 0,
@@ -999,7 +329,7 @@ export default class ClassCard {
                     default: true,
                 },
             ]; // sl_
-            // if (this._user.isTeacher) folders.push({ "name": "구독중인 폴더", "id": 0, "default": true });
+            // if (this._account.isTeacher) folders.push({ "name": "구독중인 폴더", "id": 0, "default": true });
             res.data.res_data.forEach(
                 (i: {
                     sl_idx: string;
@@ -1010,7 +340,993 @@ export default class ClassCard {
                     allow_edit_yn: string;
                     set_order_type: string;
                     set_cnt: string;
-                    owner_user_idx: string;
+                    owner_account_idx: string;
+                    sl_name: string;
+                    order_type: string;
+                    cat: unknown;
+                    publisher: unknown;
+                }) =>
+                    i.sl_name &&
+                    i.sl_idx &&
+                    folders.push({
+                        name: i.sl_name,
+                        id: Number(i.sl_idx),
+                        default: false,
+                    })
+            );
+            return {
+                success: true,
+                message: "성공",
+                data: folders,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+}
+/**
+ * get Account by id & password
+ * @param client AxiosInstance
+ * @param id Id of the account
+ * @param password Password of the account
+ * @returns Account
+ */
+async function login(
+    client: AxiosInstance,
+    id: string,
+    password: string
+): Promise<Account> {
+    var res = await client
+        .post(
+            `https://${n}.classcard.net/api/users/login`,
+            qs.stringify({
+                login: 1,
+                id: id,
+                pw: password,
+            }),
+            {
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    security_id: "20ff464a2eeeec5588a7acc3408adf0d",
+                },
+            }
+        )
+        .catch((x) => x?.response || x);
+    if (res?.data?.result?.code !== 200)
+        throw new Error("아이디 또는 비밀번호를 확인해주세요. (0)", {
+            cause: res,
+        });
+    const account: TAccount = {
+        isTeacher: res.data.res_data.user_type === 1,
+        name: res.data.res_data.name,
+        id: res.data.res_data.user_idx,
+        isPro:
+            typeof Number(res.data.res_data.b_s_idx) === "number" &&
+            Number(res.data.res_data.b_s_idx) > 0,
+        token: res.data.res_data.token,
+    };
+    (client.defaults.headers as any)["Authorization"] =
+        account.id + " " + account.token;
+    (client.defaults.headers as any)["User-Agent"] = String(
+        (client.defaults.headers as any)["User-Agent"]
+    ).replace("u_idx:0", "u_idx:" + account.id);
+    return new Account(client, account);
+}
+/**
+ * get Account by create account.
+ * FIXME: Unfinished
+ * @param type type of account
+ * @param accountInfo account infomation
+ * @returns
+ */
+async function createAccount(
+    type: EUserType,
+    accountInfo: {
+        id: string;
+        email: string;
+        password: string;
+        name: string;
+        phone: string;
+        orgName?: string;
+    }
+) {
+    const [emailAddress, emailDomain] = accountInfo.email.split("@");
+    let postData;
+    if (type === EUserType["student"])
+        postData = qs.stringify({
+            birthday: "20000404",
+            class_idx: "-1",
+            class_type: "c",
+            day: "4",
+            email: emailAddress,
+            email_alarm_yn: "0",
+            email_domain: emailDomain,
+            external_id: "",
+            g_class_idx: "-1",
+            hp: accountInfo.phone,
+            join_client: "1",
+            join_route: "1",
+            login_id: accountInfo.id,
+            login_pw: accountInfo.password,
+            month: "4",
+            name: accountInfo.name,
+            over_14_yn: "1",
+            parent_hp: "",
+            parent_name: "",
+            profile_img: "",
+            sess_key: "",
+            user_type: type,
+            year: "2000",
+        });
+    else if (type === EUserType["teacher"])
+        postData = qs.stringify({
+            // SCHOOL TEACHER NOT HAKWON
+            auth_code: Math.floor(100000 + Math.random() * 900000).toString(),
+            birthday: "",
+            born_day: "",
+            born_month: "",
+            born_year: "",
+            class_idx: "-1",
+            class_type: "c",
+            email: emailAddress,
+            email_alarm_yn: "0",
+            email_domain: emailDomain,
+            external_id: "",
+            g_class_idx: "-1",
+            hp: accountInfo.phone,
+            join_client: "1",
+            join_route: "1",
+            login_id: accountInfo.id,
+            login_pw: accountInfo.password,
+            name: accountInfo.name,
+            org_name: accountInfo.orgName || "XX초등학교",
+            over_14_yn: "0",
+            profile_img: "",
+            school_type: ESchoolType["school"],
+            sess_key: "",
+            user_type: type,
+        });
+    const response = await axios
+        .post(`https://${n}.classcard.net/LoginProc/regist`, postData)
+        .then((res) => res.data)
+        .catch(() => undefined);
+    if (response?.result !== "ok")
+        throw new Error("요청을 처리하는 동안 오류가 발생했습니다. (0)");
+    return {
+        success: true,
+        message: "suc",
+        data: response,
+    };
+}
+
+export default class Classcard {
+    private client: AxiosInstance;
+    private _targetCardSet: TCardSet;
+    private _class: TClass;
+    private _account: TAccount;
+    constructor() {
+        this.client = axios.create({
+            headers: {
+                "User-Agent":
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20A392 [FBAN/FBIOS;FBDV/iPhone15,3;FBMD/iPhone;FBSN/iOS;FBSV/16.0.3;FBSS/3;FBID/phone;FBLC/es_LA;FBOP/5] ClassCard/1.0.339 u_idx:0",
+            },
+        });
+        this.client.interceptors.response.use(
+            (response) => {
+                if (
+                    response.data?.result?.s_ts &&
+                    response.data.result.s_ts.length
+                )
+                    return response;
+            },
+            function (error) {
+                return Promise.reject(error);
+            }
+        );
+        this._targetCardSet = {
+            id: 0,
+            name: "",
+            type: 0,
+            lastLearnDate: "",
+            study_data: [],
+            dirty: false,
+            log: JSON.parse(JSON.stringify(defaultLogObject)),
+        };
+        this._class = {
+            id: 0,
+            name: "",
+        };
+        this._account = {
+            name: "",
+            id: 0,
+            token: "",
+            isPro: false,
+            isTeacher: false,
+        };
+    }
+
+    public get targetCardSet() {
+        return this._targetCardSet;
+    }
+
+    public get class() {
+        return this._class;
+    }
+
+    public get account() {
+        return this._account;
+    }
+    public async login(id: string, password: string) {
+        try {
+            var res = await this.client
+                .post(
+                    `https://${n}.classcard.net/api/users/login`,
+                    qs.stringify({
+                        login: 1,
+                        id: id,
+                        pw: password,
+                    }),
+                    {
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            security_id: "20ff464a2eeeec5588a7acc3408adf0d",
+                        },
+                    }
+                )
+                .catch((x) => x?.response || x);
+            if (res?.data?.result?.code !== 200)
+                throw new Error("아이디 또는 비밀번호를 확인해주세요. (0)", {
+                    cause: res,
+                });
+            this._account = {
+                isTeacher: res.data.res_data.user_type === 1,
+                name: res.data.res_data.name,
+                id: res.data.res_data.user_idx,
+                isPro:
+                    typeof Number(res.data.res_data.b_s_idx) === "number" &&
+                    Number(res.data.res_data.b_s_idx) > 0,
+                token: res.data.res_data.token,
+            };
+            (this.client.defaults.headers as any)["Authorization"] =
+                this._account.id + " " + this._account.token;
+            (this.client.defaults.headers as any)["User-Agent"] = String(
+                (this.client.defaults.headers as any)["User-Agent"]
+            ).replace("u_idx:0", "u_idx:" + this._account.id);
+            this._targetCardSet.log.user_idx = String(this._account.id);
+            return {
+                success: true,
+                message: "로그인 성공",
+                data: res.data,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async sendLearnAll(activity: EActivity) {
+        try {
+            if (!this._targetCardSet.id || !this._class.id)
+                throw new Error(
+                    (!this._class.id
+                        ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요."
+                        : "세트 아이디 또는 클래스 아이디를 설정해야합니다.") +
+                        " (0)"
+                );
+            let before: number | undefined;
+            let after: number;
+            while (typeof before !== "number")
+                before = await this.getTotal(false).then((t) =>
+                    t.data
+                        ? t.data[
+                              EActivity[activity] as
+                                  | "Memorize"
+                                  | "Recall"
+                                  | "Spell"
+                          ]
+                        : undefined
+                );
+            let params = new URLSearchParams();
+            let cardLogDate = Date.now();
+            var card_log_ts = Classcard.getTimestamp(cardLogDate);
+            let p = {
+                base_info: {
+                    s_ts: "",
+                    set_idx: "",
+                    user_idx: this._account.id,
+                },
+                req_data: {
+                    fm_account_card_log: [
+                        {
+                            activity: activity,
+                            card_idx: -1,
+                            class_idx: this._class.id,
+                            deleted: 0,
+                            score: Math.floor(before / 100) + 1,
+                            set_idx: this._targetCardSet.id,
+                            ts: card_log_ts,
+                            user_idx: this._account.id,
+                        },
+                    ],
+                    fm_account_class_learn_set: [],
+                    fm_account_play_score: [],
+                    fm_account_set_log: [] as any,
+                },
+            };
+            let obj: {
+                [key in EActivity]:
+                    | "mem_learn_card_cnt"
+                    | "recall_learn_card_cnt"
+                    | "spell_learn_card_cnt";
+            } = {} as any;
+            obj[EActivity["Memorize"]] = "mem_learn_card_cnt";
+            obj[EActivity["Recall"]] = "recall_learn_card_cnt";
+            obj[EActivity["Spell"]] = "spell_learn_card_cnt";
+            for (const card of this._targetCardSet.study_data) {
+                p.req_data.fm_account_card_log.push({
+                    activity: activity,
+                    card_idx: card.card_idx,
+                    class_idx: this._class.id,
+                    deleted: 1,
+                    score: 1,
+                    set_idx: this._targetCardSet.id as number,
+                    ts: card_log_ts,
+                    user_idx: this._account.id,
+                });
+                this._targetCardSet.log[obj[activity]] = String(
+                    Number(this._targetCardSet.log[obj[activity]]) + 1
+                );
+            }
+            p.req_data.fm_account_set_log.push({
+                bookmark_yn: "0",
+                class_idx: this._class.id,
+                deleted: "0",
+                dirty: this._targetCardSet.dirty ? 1 : 0,
+                last_card: p.req_data.fm_account_card_log.at(-1)?.card_idx,
+                last_learn_activity: activity,
+                last_learn_activity_progress:
+                    this._targetCardSet.log.last_learn_activity_progress,
+                last_learn_date: Classcard.getTimestamp(
+                    Date.now() - this._targetCardSet.study_data.length * 100
+                ),
+                last_round: this._targetCardSet.log.last_round,
+                last_section: this._targetCardSet.log.last_section,
+                learn_status: this._targetCardSet.log.learn_status,
+                mem_learn_card_cnt:
+                    this._targetCardSet.log["mem_learn_card_cnt"],
+                recall_learn_card_cnt:
+                    this._targetCardSet.log["recall_learn_card_cnt"],
+                spell_learn_card_cnt:
+                    this._targetCardSet.log["spell_learn_card_cnt"],
+                reg_date: "",
+                section_size: 10, // 한 구간 당 카드 개수 (정확하지 않음) this._set.study_data.length < 10 ? 10 : this._set.study_data.length
+                set_idx: this._targetCardSet.id,
+                study_type: "0", //알 수 없음
+                ts: Classcard.getTimestamp(cardLogDate - 1000),
+                user_idx: this._account.id,
+                view_type: "6", // 학습단위. n개씩 구간 단위로 학습: 1; 중요 카드 학습: 4; 전체 카드 학습: 6
+            });
+            params.append("p", JSON.stringify(p));
+            const response = await this.client
+                .post(
+                    `https://${n}.classcard.net/sync/upsync_account_study_log`,
+                    params
+                )
+                .catch(() => undefined);
+            if (response?.data?.result?.code !== 200)
+                throw new Error("서버와의 통신에 실패했습니다. (1)");
+            const fm_account_set_log: sync_set_class_v3_ResponseData["fm_account_set_log"] =
+                response.data.res_data.fm_account_set_log;
+            if (
+                fm_account_set_log.find(
+                    (x) => x.set_idx == String(this._targetCardSet.id)
+                )
+            )
+                this._targetCardSet.log = fm_account_set_log.find(
+                    (x) => x.set_idx == String(this._targetCardSet.id)
+                )!;
+            after = await this.getTotal(false).then(
+                (t) =>
+                    t.data![
+                        EActivity[activity] as "Memorize" | "Recall" | "Spell"
+                    ] || 0
+            );
+            // console.log("aft", after);
+            return {
+                success: true,
+                message: "성공",
+                data: {
+                    before,
+                    after,
+                },
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async addGameScore(
+        game: EActivity,
+        score: number,
+        fetchRank?: boolean
+    ) {
+        try {
+            if (!this._targetCardSet.id || !this._class.id)
+                throw new Error(
+                    (!this._class.id
+                        ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요."
+                        : "세트 아이디 또는 클래스 아이디를 설정해야합니다.") +
+                        " (0)"
+                );
+            if (![4, 5].includes(game))
+                throw new Error("지원하지 않는 게임입니다. (1)");
+            let params = new URLSearchParams();
+            params.append(
+                "p",
+                JSON.stringify({
+                    base_info: {
+                        s_ts: "",
+                        set_idx: this._targetCardSet.id.toString(),
+                        user_idx: this._account.id.toString(),
+                    },
+                    req_data: {
+                        fm_account_card_log: [],
+                        fm_account_class_learn_set: [],
+                        fm_account_play_score: [
+                            {
+                                activity: game,
+                                class_idx: this._class.id,
+                                score: score,
+                                score_idx: 0, // 알 수 없음
+                                set_idx: this._targetCardSet.id,
+                                user_idx: this._account.id,
+                            },
+                        ],
+                        fm_account_set_log: [],
+                    },
+                })
+            );
+            let res = await this.client
+                .post(
+                    `https://${n}.classcard.net/sync/upsync_account_study_log`,
+                    params
+                )
+                .catch((x) => x?.response || x);
+            if (
+                res?.data?.result?.code !== 200 ||
+                res.data.res_data.fm_account_play_score != 1
+            )
+                throw new Error("알 수 없는 오류가 발생했습니다. (2)", {
+                    cause: res,
+                });
+            let s_ts = res.data.result.s_ts;
+            let rank: { [key: string]: string | number | null } = {
+                class: null,
+                all: null,
+            };
+            if (fetchRank) {
+                try {
+                    let res = await this.client.get(
+                        `https://${n}.classcard.net/api/sets/activity_rank_combine_v2?class_idx=${this._class.id}&set_idx=${this._targetCardSet.id}&activity=${game}&current_score=${score}&limit=100`
+                    );
+                    if (res.data.result.code !== 200)
+                        throw new Error("알 수 없는 오류가 발생했습니다. (3)", {
+                            cause: res,
+                        });
+                    for (const t of ["class", "all"]) {
+                        let rankObj = res.data[t + "_rank_list"].find(
+                            (x: any) =>
+                                x.user_idx === String(this._account.id) &&
+                                x.reg_date === s_ts
+                        );
+                        if (!rankObj)
+                            rank[t] =
+                                t === "class"
+                                    ? "오류"
+                                    : "순위가 100등 보다 낮습니다.";
+                        else rank[t] = rankObj.rank;
+                    }
+                } catch {}
+            }
+            return {
+                success: true,
+                message: "성공",
+                data: {
+                    rank,
+                },
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async getCardSet(setId: number) {
+        try {
+            if (!this._class.id)
+                throw new Error(
+                    "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요. (0)"
+                );
+            var classSets = await this.getSetsFromClass(this._class.id).then(
+                (x) => x?.data
+            );
+            if (!classSets)
+                throw new Error("알 수 없는 오류가 발생했습니다. (1)");
+            var params = new URLSearchParams();
+            params.append(
+                "p",
+                JSON.stringify({
+                    base_info: {
+                        answer_v: -1,
+                        class_idx: this._class.id.toString() || "",
+                        drill_v: -1,
+                        listen_v: -1,
+                        s_ts: "",
+                        set_idx: setId.toString(),
+                        user_idx: this._account.id.toString(),
+                    },
+                })
+            );
+            var cardRes = await this.client
+                .post(`https://${n}.classcard.net/sync/sync_card`, params)
+                .catch((x) => x?.response || x);
+            if (cardRes?.data?.result?.code !== 200)
+                throw new Error("알 수 없는 오류가 발생했습니다. (2)");
+            var set = classSets.find((x) => x.id == setId)!;
+            set.study_data =
+                cardRes.data.res_data.fm_card
+                    .map((x: any) => {
+                        return {
+                            card_idx: Number(x.card_idx),
+                        };
+                    })
+                    .filter((x: TCard) => typeof x.card_idx === "number") || [];
+            return { success: true, message: "", data: set };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async setSet(setId: number) {
+        try {
+            let res = await this.getCardSet(setId);
+            if (!res?.success)
+                throw new Error((res?.message || "Unknown Error.") + " (0)", {
+                    cause: res,
+                });
+            this._targetCardSet = res.data!;
+            this._targetCardSet.log.set_idx = String(this._targetCardSet.id);
+            this._targetCardSet.log.section_size = String(
+                this._targetCardSet.study_data.length
+            );
+            return {
+                success: true,
+                message: "세트가 설정되었습니다.",
+                data: this._targetCardSet,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async getClass(classId: number) {
+        try {
+            let res = await this.getClasses();
+            let classInfo = res?.data?.find((x) => x.id === classId);
+            if (!classInfo)
+                throw new Error(
+                    res?.message || "알 수 없는 오류가 발생했습니다." + " (0)",
+                    { cause: res }
+                );
+            return {
+                success: true,
+                message: "",
+                data: classInfo,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async setClass(classId: number) {
+        try {
+            let res = await this.getClass(classId);
+            if (!res?.data)
+                throw new Error(res?.message + " (0)", { cause: res });
+            this._class = res.data;
+            this._targetCardSet.log.class_idx = String(this._class.id);
+            return {
+                success: true,
+                message: "클래스가 설정되었습니다.",
+                data: this._targetCardSet,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async getTotal(getTestScore: boolean = true) {
+        try {
+            if (!this._targetCardSet.id || !this._class.id)
+                throw new Error(
+                    (!this._class.id
+                        ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요."
+                        : "세트 아이디 또는 클래스 아이디를 설정해야합니다.") +
+                        " (0)"
+                );
+            let data: {
+                Memorize: number;
+                Recall: number;
+                Spell: number;
+                Test: number[];
+            } = {
+                Memorize: 0,
+                Recall: 0,
+                Spell: 0,
+                Test: [],
+            };
+            if (getTestScore)
+                try {
+                    let test_score_log: { score: string }[] = await this.client
+                        .get(
+                            `https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this._targetCardSet.id}&class_idx=${this._class.id}`
+                        )
+                        .then((res) =>
+                            res.data.res_data.test_score_log.reverse()
+                        );
+                    data.Test = test_score_log.map((x) => Number(x.score));
+                } catch {
+                    data.Test = [];
+                }
+            let params = new URLSearchParams();
+            params.append(
+                "p",
+                JSON.stringify({
+                    base_info: {
+                        s_ts: "",
+                        set_idx: this._targetCardSet.id || "",
+                        user_idx: this._account.id || "",
+                        // "answer_v": -1,
+                        // "listen_v": -1,
+                        // "drill_v": -1
+                    },
+                })
+            );
+            var sync_card: {
+                user_idx: string;
+                set_idx: string;
+                class_idx: string;
+                activity: string;
+                card_idx: string;
+                score: string;
+                deleted: string;
+                ts: string;
+            }[] = await this.client
+                .post(`https://${n}.classcard.net/sync/sync_card`, params)
+                .then((res) => res.data.res_data.fm_account_card_log)
+                .catch(() => undefined);
+            const globalFilter = (c: (typeof sync_card)[number]) =>
+                c.deleted === "0" &&
+                c.user_idx &&
+                c.set_idx &&
+                c.class_idx == String(this._class.id);
+
+            let done = sync_card.filter(
+                (c) => c.score === "1" && c.card_idx !== "-1" && globalFilter(c)
+            );
+            for (var t of ["Memorize", "Recall", "Spell"] as (
+                | "Memorize"
+                | "Recall"
+                | "Spell"
+            )[]) {
+                data[t] =
+                    Math.round(
+                        (done.filter((c) => c.activity === String(EActivity[t]))
+                            .length /
+                            this._targetCardSet.study_data.length!) *
+                            100 *
+                            1e2
+                    ) / 1e2;
+            }
+            let repeat = sync_card.filter(
+                (c) => c.card_idx === "-1" && globalFilter(c)
+            );
+            for (var t of ["Memorize", "Recall", "Spell"] as (
+                | "Memorize"
+                | "Recall"
+                | "Spell"
+            )[]) {
+                data[t] +=
+                    repeat
+                        .filter((c) => c.activity === String(EActivity[t]))
+                        .map((c) => Number(c.score))
+                        .reduce((partialSum, a) => partialSum + a, 0) * 100;
+            }
+            // fs.writeFileSync("./sync_card__d_X.json", JSON.stringify(sync_card.filter(c => c.deleted === "0"), null, 4));
+            return {
+                success: true,
+                message: "성공",
+                data,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    // 클래스가 무조건 설정되어야 세트에 대한 학습과 게임을 할 수 있기때문에 클래스만 남김.
+    public async getSetsFromClass(classId: number) {
+        // folderName: "클래스" | "이용한 세트" | "만든 세트" | string
+        try {
+            // if (folderName === "클래스" && !classId) throw new Error("클래스 아이디를 인자로 전달해야 합니다. (0)");
+            let sets: TCardSet[] = [];
+            const syncedData = (await this.getSyncedData()).data;
+            if (!syncedData)
+                throw new Error("데이터를 가져오는데 실패했습니다. (0)");
+            // if (folderName === "이용한 세트" || folderName === "만든 세트") {
+            //     sets = syncedData.res_data.fm_set
+            //         .filter(set => Number(set.set_idx) > 0 && set.is_wrong_answer === "0" && set.deleted === "0" && (folderName === "이용한 세트" ? syncedData.res_data.fm_account_set_log.find(s => s.set_idx === set.set_idx) : Number(set.user_idx) == this._account.id))
+            //         .map(set => {
+            //             return {
+            //                 id: Number(set.set_idx),
+            //                 name: set.name,
+            //                 type: Number(set.set_type),
+            //                 lastLearnDate: syncedData.res_data.fm_account_set_log.find(s => s.set_idx === set.set_idx)?.last_learn_date || ""
+            //             };
+            //         });
+            // } else {
+            //     var folders = await this.getFolders().then(r => r?.data || []);
+            //     let res = await this.client.get(folderName === "클래스" ? (`https://${n}.classcard.net/api/classes/sets_v4?class_idx=${classId}`) : `https://${n}.classcard.net/api/sets/folder_sets?sl_idx=${folders.find(f => f.name === folderName)?.id}&offset=1&limit=1000&ft=`).catch(x => x?.response || x);
+            //     if (res?.data?.result?.code !== 200) throw new Error("세트 목록을 가져오는 중 오류가 발생했습니다. (2)", { cause: res });
+            //     if (folderName === "클래스" && classId) await this.setClass(classId).then(r => {
+            //         if (!r?.success) throw new Error((r?.message || "알 수 없는 오류가 발생했습니다.") + " (3)", { cause: r });
+            //     });
+            //     sets = (res.data.res_data as { set_idx: string, name?: string, set_name?: string, set_type: string }[]).map(set => {
+            //         return {
+            //             id: Number(set.set_idx),
+            //             name: set.name || set.set_name || "",
+            //             type: Number(set.set_type),
+            //             lastLearnDate: syncedData.res_data.fm_account_set_log.find(s => s.set_idx === set.set_idx)?.last_learn_date || ""
+            //         };
+            //     });
+            // };
+            const res = await this.client
+                .get(
+                    `https://${n}.classcard.net/api/classes/sets_v4?class_idx=${classId}`
+                )
+                .catch((x) => x?.response || x);
+            if (res?.data?.result?.code !== 200)
+                throw new Error(
+                    "세트 목록을 가져오는 중 오류가 발생했습니다. (2)",
+                    {
+                        cause: res,
+                    }
+                );
+            const data: sets_v4_ResponseData = res.data.res_data;
+            await this.setClass(classId).then((r) => {
+                if (!r?.success)
+                    throw new Error(
+                        (r?.message || "알 수 없는 오류가 발생했습니다.") +
+                            " (3)",
+                        { cause: r }
+                    );
+            });
+            sets = data.map((set) => {
+                return {
+                    id: Number(set.set_idx),
+                    name: set.name,
+                    type: Number(set.set_type),
+                    lastLearnDate:
+                        syncedData.fm_account_set_log.find(
+                            (s) => s.set_idx === set.set_idx
+                        )?.last_learn_date || "",
+                    dirty: set.dirty === "1",
+                    study_data: [],
+                    log:
+                        syncedData.fm_account_set_log.find(
+                            (s) => s.set_idx === set.set_idx
+                        ) ||
+                        Object.assign(
+                            JSON.parse(JSON.stringify(defaultLogObject)),
+                            {
+                                set_idx: set.set_idx,
+                                user_idx: this._account.id,
+                                class_idx: classId,
+                                last_learn_date: Classcard.getTimestamp(),
+                                section_size: "10",
+                            }
+                        ),
+                };
+            });
+            return {
+                success: true,
+                message: "성공",
+                data: sets,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async getSyncedData() {
+        try {
+            let params = new URLSearchParams();
+            params.append(
+                "p",
+                JSON.stringify({
+                    base_info: {
+                        g_class_full_sync: 1,
+                        s_ts: "",
+                        set_idx: "",
+                        user_idx: this._account.id,
+                    },
+                })
+            );
+            const response = await this.client
+                .post(
+                    `https://${n}.classcard.net/sync/sync_set_class_v3`,
+                    params
+                )
+                .catch((x) => x?.response || x);
+            if (response?.data?.result?.code !== 200)
+                throw new Error(
+                    "데이터를 동기화하는 중 오류가 발생했습니다. (0)",
+                    {
+                        cause: response,
+                    }
+                );
+            return {
+                success: true,
+                message: "성공",
+                data: response.data.res_data as sync_set_class_v3_ResponseData,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async getClasses() {
+        try {
+            let params = new URLSearchParams();
+            params.append(
+                "p",
+                JSON.stringify({
+                    base_info: {
+                        g_class_full_sync: 1,
+                        s_ts: "",
+                        set_idx: "",
+                        user_idx: this._account.id,
+                    },
+                })
+            );
+            let res = await this.client
+                .post(
+                    `https://${n}.classcard.net/sync/sync_set_class_v3`,
+                    params
+                )
+                .catch((x) => x?.response || x);
+            if (res?.data?.result?.code !== 200)
+                throw new Error(
+                    "클래스 목록을 가져오는 중 오류가 발생했습니다.",
+                    {
+                        cause: res,
+                    }
+                );
+            let classes = [
+                ...(
+                    res.data.res_data.fm_class as {
+                        class_idx: string;
+                        name: string;
+                    }[]
+                ).map((c) => {
+                    return {
+                        id: Number(c.class_idx),
+                        name: c.name,
+                    };
+                }),
+                ...(
+                    res.data.res_data.g_class as {
+                        class_idx: string;
+                        name: string;
+                    }[]
+                ).map((c) => {
+                    return {
+                        id: Number(c.class_idx),
+                        name: c.name,
+                    };
+                }),
+            ];
+            return {
+                success: true,
+                message: "성공",
+                data: classes,
+            };
+        } catch (e) {
+            return {
+                success: false,
+                message: (e as Error).message,
+                error: e as Error,
+            };
+        }
+    }
+
+    public async getFolders() {
+        try {
+            let res = await this.client
+                .get(`https://${n}.classcard.net/api/sets/folders`)
+                .catch((x) => x?.response || x);
+            if (!res?.data?.res_data)
+                throw new Error(
+                    "폴더 목록을 가져오는 중 오류가 발생했습니다. (0)",
+                    {
+                        cause: res,
+                    }
+                );
+            let folders: TFolder[] = [
+                {
+                    name: "이용한 세트",
+                    id: 0,
+                    default: true,
+                },
+                {
+                    name: "만든 세트",
+                    id: 0,
+                    default: true,
+                },
+            ]; // sl_
+            // if (this._account.isTeacher) folders.push({ "name": "구독중인 폴더", "id": 0, "default": true });
+            res.data.res_data.forEach(
+                (i: {
+                    sl_idx: string;
+                    sl_order: string;
+                    sl_type: string;
+                    img_path: unknown;
+                    open_yn: string;
+                    allow_edit_yn: string;
+                    set_order_type: string;
+                    set_cnt: string;
+                    owner_account_idx: string;
                     sl_name: string;
                     order_type: string;
                     cat: unknown;
@@ -1040,7 +1356,7 @@ export default class ClassCard {
 
     public async postTest() {
         try {
-            if (!this._set.id || !this._class.id)
+            if (!this._targetCardSet.id || !this._class.id)
                 throw new Error(
                     (!this._class.id
                         ? "클래스 외부에서는 학습이 제한되니, 클래스로 이동하세요."
@@ -1049,7 +1365,7 @@ export default class ClassCard {
                 );
             var res = await this.client
                 .get(
-                    `https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this._set.id}&class_idx=${this._class.id}`
+                    `https://${n}.classcard.net/api/classes/set_test_v5?set_idx=${this._targetCardSet.id}&class_idx=${this._class.id}`
                 )
                 .catch((x) => x?.response || x);
             if (res?.data?.result?.code !== 200)
@@ -1071,7 +1387,7 @@ export default class ClassCard {
                     qs.stringify({
                         class_idx: this._class.id,
                         is_only_wrong: 0, // 알 수 없음
-                        set_idx: this._set.id,
+                        set_idx: this._targetCardSet.id,
                     })
                 )
                 .catch((x) => x?.response || x);
@@ -1089,7 +1405,7 @@ export default class ClassCard {
                         return {
                             card_idx: q.card_idx,
                             test_card_idx: q.test_card_idx,
-                            is_pre_user: "0", // 알 수 없음
+                            is_pre_account: "0", // 알 수 없음
                             correct_yn: "1",
                             subjective_yn: q.subjective_yn,
                             user_input:
@@ -1110,7 +1426,7 @@ export default class ClassCard {
             );
             params.append("score", "100");
             params.append("score_idx", res.data.res_data.score_idx);
-            params.append("set_idx", String(this._set.id));
+            params.append("set_idx", String(this._targetCardSet.id));
             var res = await this.client
                 .post(
                     `https://${n}.classcard.net/api/classes/submit_test_v2`,
@@ -1160,7 +1476,7 @@ export default class ClassCard {
     }
 
     public static async createAccount(
-        type: UserType,
+        type: EUserType,
         accountInfo: {
             id: string;
             email: string;
@@ -1173,7 +1489,7 @@ export default class ClassCard {
         try {
             const [emailAddress, emailDomain] = accountInfo.email.split("@");
             let postData;
-            if (type === UserType["student"])
+            if (type === EUserType["student"])
                 postData = qs.stringify({
                     birthday: "20000404",
                     class_idx: "-1",
@@ -1199,7 +1515,7 @@ export default class ClassCard {
                     user_type: type,
                     year: "2000",
                 });
-            else if (type === UserType["teacher"])
+            else if (type === EUserType["teacher"])
                 postData = qs.stringify({
                     // SCHOOL TEACHER NOT HAKWON
                     auth_code: Math.floor(
@@ -1225,7 +1541,7 @@ export default class ClassCard {
                     org_name: accountInfo.orgName || "XX초등학교",
                     over_14_yn: "0",
                     profile_img: "",
-                    school_type: SchoolType["school"],
+                    school_type: ESchoolType["school"],
                     sess_key: "",
                     user_type: type,
                 });
@@ -1252,7 +1568,7 @@ export default class ClassCard {
     }
 }
 
-type BattleQuest = {
+type TBattleQuest = {
     test_card_idx: string;
     front: string;
     back: string;
@@ -1284,20 +1600,20 @@ type BattleInfo = {
     b_mode: number;
     test_id: number;
     test_time: number;
-    b_user_idx: string;
+    b_account_idx: string;
     test_random: boolean;
     b_name: string;
     set_idx: number;
     set_name: string;
     set_type: number;
-    quest_list: BattleQuest[];
+    quest_list: TBattleQuest[];
 };
 
 export class QuizBattle extends EventEmitter {
     private ws!: Websocket.WebSocket;
     private pongTimer!: NodeJS.Timeout;
     private _battleID: number;
-    private _userName: string;
+    private _accountName: string;
     private _ready: boolean;
     private _joined: boolean;
     private _score: number;
@@ -1318,7 +1634,7 @@ export class QuizBattle extends EventEmitter {
         this._classAvg = 0;
         this._ready = false;
         this._joined = false;
-        this._userName = "";
+        this._accountName = "";
         this._round = {
             remaining: 5,
             correct: 0,
@@ -1336,7 +1652,7 @@ export class QuizBattle extends EventEmitter {
     }
 
     public get userName(): string {
-        return this._userName;
+        return this._accountName;
     }
 
     public get ready(): boolean {
@@ -1515,7 +1831,7 @@ export class QuizBattle extends EventEmitter {
     }
 
     public async join(name: string) {
-        this._userName = name;
+        this._accountName = name;
         this.sendMessage({
             cmd: "b_join",
             battle_id: this._battleID,
@@ -1525,7 +1841,7 @@ export class QuizBattle extends EventEmitter {
             major_ver: 8,
             minor_ver: 0,
             platform: "Android",
-            user_name: this._userName,
+            user_name: this._accountName,
         });
         while (!this._joined) await sleep(500);
         return true;
@@ -1582,7 +1898,7 @@ export class QuizBattle extends EventEmitter {
                 b_mode: data.b_mode,
                 test_id: data.test_id,
                 test_time: data.test_time,
-                b_user_idx: data.b_user_idx,
+                b_account_idx: data.b_account_idx,
                 test_random: data.test_random,
                 b_name: data.b_name,
                 set_idx: data.set_idx,
@@ -1606,7 +1922,7 @@ export class QuizBattle extends EventEmitter {
                 major_ver: 8,
                 minor_ver: 0,
                 platform: "Android",
-                user_name: this._userName,
+                user_name: this._accountName,
             });
         }
         if (data.cmd === "b_team") {
@@ -1882,122 +2198,16 @@ function sleep(ms: number): Promise<void> {
 }
 
 export {
-    ClassCard,
-    LearnType,
-    Activity,
-    SetType,
-    Folder,
-    Class,
-    User,
-    Card,
-    UserType,
-    SchoolType,
-    ClassSet,
-    BattleQuest,
+    Classcard as CardSet,
+    ELearnType,
+    EActivity,
+    ESetType,
+    TFolder,
+    TClass,
+    TAccount,
+    TCard,
+    EUserType,
+    ESchoolType,
+    TCardSet,
+    TBattleQuest,
 };
-
-/*
-fetch("https://stg.classcard.net/LoginProc/regist", {
-  "headers": {
-    "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "sec-ch-ua": "\"Chromium\";v=\"110\", \"Not A(Brand\";v=\"24\", \"Google Chrome\";v=\"110\"",
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": "\"Chrome OS\"",
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "x-requested-with": "XMLHttpRequest"
-  },
-  "referrer": "https://stg.classcard.net/Login/regist?m=reg&s=",
-  "referrerPolicy": "strict-origin-when-cross-origin",
-  "body": BODY,
-  "method": "POST",
-  "mode": "cors",
-  "credentials": "include"
-});
-
-Student regist body:
-qs.stringify({
-    "birthday": "20000404",
-    "class_idx": "-1",
-    "class_type": "c",
-    "day": "4",
-    "email": "이메일 주소",
-    "email_alarm_yn": "0",
-    "email_domain": "이메일 도메인",
-    "external_id": "",
-    "g_class_idx": "-1",
-    "hp": "전화번호",
-    "join_client": "1",
-    "join_route": "1",
-    "login_id": "test121212",
-    "login_pw": "test121212",
-    "month": "4",
-    "name": "asdasd",
-    "over_14_yn": "1",
-    "parent_hp": "",
-    "parent_name": "",
-    "profile_img": "",
-    "sess_key": "",
-    "user_type": "2",
-    "year": "2000"
-});
-
-Teacher(school):
-qs.stringify({
-    "auth_code": "전화번호 인증코드",
-    "birthday": "",
-    "born_day": "",
-    "born_month": "",
-    "born_year": "",
-    "class_idx": "-1",
-    "class_type": "c",
-    "email": "이메일 주소",
-    "email_alarm_yn": "0",
-    "email_domain": "이메일 도메인",
-    "external_id": "",
-    "g_class_idx": "-1",
-    "hp": "전화번호",
-    "join_client": "1",
-    "join_route": "1",
-    "login_id": "아이디",
-    "login_pw": "비밀번호",
-    "name": "이름을 적어주세요.",
-    "org_name": "재직중인 교육기관의 이름을 적어주세요.",
-    "over_14_yn": "0",
-    "profile_img": "",
-    "school_type": "1",
-    "sess_key": "",
-    "user_type": "1"
-});
-
-Teacher(hakwon):
-qs.stringify({
-    "auth_code": "", // 전화번호 인증코드. 안넣어도 됨.
-    "birthday": "",
-    "born_day": "",
-    "born_month": "",
-    "born_year": "",
-    "class_idx": "-1",
-    "class_type": "c",
-    "email": "이메일 주소",
-    "email_alarm_yn": "0",
-    "email_domain": "이메일 도메인",
-    "external_id": "",
-    "g_class_idx": "-1",
-    "hp": "전화번호",
-    "join_client": "1",
-    "join_route": "1",
-    "login_id": "아이디",
-    "login_pw": "비밀번호",
-    "name": "이름을 적어주세요.",
-    "org_name": "재직중인 교육기관의 이름을 적어주세요.",
-    "over_14_yn": "0",
-    "profile_img": "",
-    "school_type": "2",
-    "sess_key": "", // 원래 c4bb13g44krp3saji0hff93e6c처럼 생겼지만 안넣어도 됨.
-    "type-chk": "1",
-    "user_type": "1"
-});
-*/
