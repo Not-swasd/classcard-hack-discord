@@ -3,5 +3,4 @@ node_modules
 /*.js
 /*.html
 users.json
-*test.js
-*test.ts
+tests

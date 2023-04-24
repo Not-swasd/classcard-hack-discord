@@ -1,11 +1,11 @@
-import { CategoryChannel, Client, Collection, Message, TextChannel, EmbedBuilder, Partials, ComponentType, ChannelType } from "discord.js";
+import { CategoryChannel, Client, Collection, Message, TextChannel, EmbedBuilder, Partials, ComponentType, ChannelType, ModalBuilder, ActionRowBuilder, TextInputStyle, ModalActionRowComponentBuilder, TextInputBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ActivityType } from "discord.js";
 import { Activity, ClassCard, QuizBattle, SetType, BattleQuest } from "./classcard.js";
 import * as fs from "fs";
 import * as crypto from "crypto";
 
 if (!fs.existsSync("./config.json")) {
     fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["디스코드 봇 소유자 아이디"], prefix: "!", guild: "", ticketCategory: "", ticketChannel: "" }, null, 4));
-    console.info("config.json 설정좀");
+    console.info("config.json를 수정해주세요.");
     process.exit(0);
 };
 if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
@@ -85,22 +85,6 @@ await Promise.all(Object.keys(users).map(async id => {
         if (users[id].classID && !(await classes[id].setClass(users[id].classID).then(res => res?.success))) users[id].classID = 0;
         if (users[id].setID && !(await classes[id].setSet(users[id].setID).then(res => res?.success))) users[id].setID = 0;
         saveUsers();
-        if (users[id].channelID && users[id].messageID) client.once("ready", async () => {
-            if (!users[id].channelID || !users[id].messageID) return;
-            let guild = client.guilds.cache.get(config.guild)
-            if (!guild) return;
-            let channel = guild.channels.cache.get(users[id].channelID) as TextChannel;
-            if (!channel) return;
-            let message = await channel.messages.fetch(users[id].messageID).catch(() => undefined);
-            if (!message) {
-                channel.delete();
-                users[id].channelID = "";
-                users[id].messageID = "";
-                saveUsers();
-                return;
-            };
-            updateMessage(message, id, "edit");
-        });
     } catch { };
 }));
 console.clear();
@@ -109,7 +93,26 @@ client.login(config.token);
 process.on("unhandledRejection", (e) => console.error(e));
 process.on("uncaughtException", (e) => console.error(e));
 
-client.on("ready", () => console.info("Logged in as " + client.user?.tag));
+client.on("ready", () => {
+    console.info("Logged in as " + client.user?.tag);
+    client.user!.setActivity({ name: "ClassCard", type: ActivityType.Watching, url: "https://classcard.net" });
+    Object.keys(users).forEach(async id => {
+        if (!users[id].channelID || !users[id].messageID) return;
+        let guild = client.guilds.cache.get(config.guild)
+        if (!guild) return;
+        let channel = guild.channels.cache.get(users[id].channelID) as TextChannel;
+        if (!channel) return;
+        let message = await channel.messages.fetch(users[id].messageID).catch(() => undefined);
+        if (!message) {
+            channel.delete();
+            users[id].channelID = "";
+            users[id].messageID = "";
+            saveUsers();
+            return;
+        };
+        updateMessage(message, id, "edit");
+    });
+});
 
 client.on("interactionCreate", async (interaction) => {
     try {
@@ -150,25 +153,11 @@ client.on("interactionCreate", async (interaction) => {
             };
             if (interaction.customId === "delete_channel") {
                 let message = await interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle("⚠️ 정말 채널을 삭제하시겠습니까?").setColor("Yellow")], components: [
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 2,
-                                    "label": "네",
-                                    "style": 4,
-                                    "customId": "_yes"
-                                },
-                                {
-                                    "type": 2,
-                                    "label": "아니요",
-                                    "style": 1,
-                                    "customId": "_no"
-                                }
-                            ]
-                        }
-                    ]
+                    embeds: [new EmbedBuilder().setTitle("⚠️ 정말 채널을 삭제하시겠습니까?").setColor("Yellow")],
+                    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder().setLabel("네").setStyle(ButtonStyle.Success).setCustomId("_yes"),
+                        new ButtonBuilder().setLabel("아니요").setStyle(ButtonStyle.Danger).setCustomId("_no")
+                    )]
                 }) as Message;
                 let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
                     if (inter.customId !== "_yes") return false;
@@ -184,26 +173,13 @@ client.on("interactionCreate", async (interaction) => {
                 }).catch(() => false);
                 return;
             } else if (interaction.customId === "delete_info") {
-                let message: Message = await interaction.editReply({
+                let message = await interaction.editReply({
                     embeds: [new EmbedBuilder().setTitle("⚠️ 정말 저장된 정보를 삭제하시겠습니까?").setColor("Yellow")],
-                    components: [{
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "네",
-                                "style": 4,
-                                "customId": "_yes"
-                            },
-                            {
-                                "type": 2,
-                                "label": "아니요",
-                                "style": 1,
-                                "customId": "_no"
-                            }
-                        ]
-                    }]
-                });
+                    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+                        new ButtonBuilder().setLabel("네").setStyle(ButtonStyle.Success).setCustomId("_yes"),
+                        new ButtonBuilder().setLabel("아니요").setStyle(ButtonStyle.Danger).setCustomId("_no")
+                    )]
+                }) as Message;
                 let i = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.Button }).then(async (inter) => {
                     if (inter.customId !== "_yes") return false;
                     users[interaction.user.id].id = "";
@@ -226,92 +202,76 @@ client.on("interactionCreate", async (interaction) => {
                 }).catch(() => false);
                 return;
             } else if (interaction.customId === "_set_id_pass") {
-                interaction.showModal({
-                    "title": "아이디와 비밀번호를 입력해주세요.",
-                    "customId": "_set_id_pass",
-                    "components": [{
-                        "type": 1,
-                        "components": [{
-                            "type": 4,
-                            "customId": "id",
-                            "label": "아이디",
-                            "style": 1,
-                            "minLength": 5,
-                            "maxLength": 20,
-                            "placeholder": "아이디",
-                            "required": true
-                        }]
-                    },
-                    {
-                        "type": 1,
-                        "components": [{
-                            "type": 4,
-                            "customId": "password",
-                            "label": "비밀번호",
-                            "style": 1,
-                            "minLength": 1,
-                            "maxLength": 50,
-                            "placeholder": "비밀번호",
-                            "required": true
-                        }]
-                    }],
-                });
+                interaction.showModal(new ModalBuilder()
+                    .setTitle("아이디와 비밀번호를 입력해주세요.")
+                    .setCustomId("_set_id_pass")
+                    .addComponents(
+                        new ActionRowBuilder<ModalActionRowComponentBuilder>()
+                            .addComponents(
+                                new TextInputBuilder()
+                                    .setCustomId("id")
+                                    .setLabel("아이디")
+                                    .setStyle(TextInputStyle.Short)
+                                    .setMinLength(5)
+                                    .setMaxLength(20)
+                                    .setPlaceholder("아이디")
+                                    .setRequired(true)
+                            ),
+                        new ActionRowBuilder<ModalActionRowComponentBuilder>()
+                            .addComponents(
+                                new TextInputBuilder()
+                                    .setCustomId("password")
+                                    .setLabel("비밀번호")
+                                    .setStyle(TextInputStyle.Short)
+                                    .setMinLength(1)
+                                    .setMaxLength(50)
+                                    .setPlaceholder("비밀번호")
+                                    .setRequired(true)
+                            )
+                    )
+                );
             } else if (interaction.customId === "_set_set") {
-                interaction.showModal({
-                    "title": "세트 정보를 입력해주세요.",
-                    "customId": "_set_set",
-                    "components": [{
-                        "type": 1,
-                        "components": [{
-                            "type": 4,
-                            "customId": "set_id",
-                            "label": "세트 아이디",
-                            "style": 1,
-                            "minLength": 1,
-                            "maxLength": 20,
-                            "placeholder": "0000000",
-                            "required": true
-                        }]
-                    }]
-                });
+                interaction.showModal(new ModalBuilder()
+                    .setTitle("세트 정보를 입력해주세요.")
+                    .setCustomId("_set_set")
+                    .addComponents(
+                        new ActionRowBuilder<ModalActionRowComponentBuilder>()
+                            .addComponents(
+                                new TextInputBuilder()
+                                    .setCustomId("set_id")
+                                    .setLabel("세트 아이디")
+                                    .setStyle(TextInputStyle.Short)
+                                    .setMinLength(1)
+                                    .setMaxLength(20)
+                                    .setPlaceholder("0000000")
+                                    .setRequired(true)
+                            )
+                    )
+                );
             } else if (interaction.customId === "get_sets") {
-                // let foldersResult = await classes[interaction.user.id].getFolders();
-                // if (!foldersResult?.success) {
-                //     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(foldersResult?.error?.stack && foldersResult.error.stack.length < 4000 ? foldersResult.error.message : "알 수 없는 오류입니다.").setColor("Red")] });
-                //     return;
-                // };
-                let folders: { id: number, name: string, isFolder?: boolean }[] = []; //, isFolder?: boolean
-                // foldersResult.data?.forEach(f => folders.push({ //Object.keys(foldersResult.data!).for~
-                //     id: f.id,
-                //     name: f.name,
-                //     isFolder: true
-                // }));
+                let folders: { id: number, name: string, isFolder?: boolean }[] = [];
                 let result = await classes[interaction.user.id].getClasses();
                 if (!result?.success) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(result?.error?.stack ? result.error.stack.length < 4000 ? result.error.message : result.error.stack : "알 수 없는 오류입니다.").setColor("Red")] });
                     return;
                 };
                 folders = result.data! || [];
-                // folders = [...result.data || [], ...folders || []];
                 let message = await interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 클래스를 선택해주세요.").setColor("Yellow")], // 폴더나 클래스
-                    components: [{
-                        "type": 1,
-                        "components": [{
-                            "type": 3,
-                            "customId": "class_select_1",
-                            "options": folders.map(f => {
+                    embeds: [new EmbedBuilder().setTitle("❓ 세트를 가져올 클래스를 선택해주세요.").setColor("Yellow")],
+                    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+                        new StringSelectMenuBuilder()
+                            .setCustomId("class_select_1")
+                            .setPlaceholder("클래스를 선택해주세요.")
+                            .setMinValues(1)
+                            .setMaxValues(1)
+                            .addOptions(folders.map(f => {
                                 return {
-                                    "label": f.name,
-                                    "value": String(f.isFolder ? f.name : f.id), //f.id
-                                    "description": (f.isFolder ? "폴더" : "클래스") //클래스
+                                    label: f.name,
+                                    value: String(f.isFolder ? f.name : f.id),
+                                    description: (f.isFolder ? "폴더" : "클래스")
                                 };
-                            }),
-                            "placeholder": "클래스를 선택해주세요.", // 폴더나 클래스
-                            "minValues": 1,
-                            "maxValues": 1
-                        }]
-                    }]
+                            }))
+                    )]
                 }) as Message;
                 let i: string | false = await message.awaitMessageComponent({ filter: (i) => i.user.id === interaction.user.id, time: 0, componentType: ComponentType.SelectMenu }).then((interaction) => interaction.values[0]).catch(() => false);
                 if (!i) {
@@ -319,13 +279,7 @@ client.on("interactionCreate", async (interaction) => {
                     return;
                 };
                 const classId = Number(i);
-                // if (/[0-9]/.test(i)) {
-                //     await classes[interaction.user.id].setClass(classId);
-                //     users[interaction.user.id].classID = classId;
-                //     saveUsers();
-                // };
                 let setsResult = await classes[interaction.user.id].getSetsFromClass(classId);
-                // let setsResult = await classes[interaction.user.id].getSets(/[0-9]/.test(i) ? "클래스" : i as "이용한 세트" | "만든 세트", /[0-9]/.test(i) ? classId : 0);
                 if (!setsResult?.success || !setsResult.data) {
                     interaction.editReply({ embeds: [new EmbedBuilder().setTitle("❌ 오류가 발생했습니다.").setDescription(setsResult?.error?.stack && setsResult.error.stack.length < 4000 ? setsResult.error.message : "알 수 없는 오류입니다.").setColor("Red")], components: [] });
                     return;
@@ -334,10 +288,10 @@ client.on("interactionCreate", async (interaction) => {
                 saveUsers();
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                 let sets = setsResult.data;
-                var description = sets.length < 1 ? `이 클래스에 세트가 하나도 없습니다.`/*${/[0-9]/.test(i) ? "클래스" : "폴더"}에 */ : "\`세트 이름\` [세트 아이디]\n\n" + sets.map(s => `\`${s.name}\` [${s.id}]`).join("\n");
+                var description = sets.length < 1 ? `이 클래스에 세트가 하나도 없습니다.` : "\`세트 이름\` [세트 아이디]\n\n" + sets.map(s => `\`${s.name}\` [${s.id}]`).join("\n");
                 if (description.length > 3800) description = "세트가 너무 많아서 다 표시할 수 없습니다. 수동으로 가져와주세요.\n클래스 -> 세트 -> 오른쪽 위에 있는 ... -> 세트공유를 누르고 url에서 ~~.net/set/ 이 뒤에 있는 숫자가 세트 아이디입니다.";
                 interaction.editReply({
-                    embeds: [new EmbedBuilder().setTitle(`✅ **${folders.find(x => x.id === classId)?.name}**에 있는 세트 목록`).setColor("Green").setDescription(description)], ///[0-9]/.test(i) ? folders.find(x => x.id === classId)?.name : i
+                    embeds: [new EmbedBuilder().setTitle(`✅ **${folders.find(x => x.id === classId)?.name}**에 있는 세트 목록`).setColor("Green").setDescription(description)],
                     components: []
                 });
             } else if (["s_memorize", "s_recall", "s_spell"].includes(interaction.customId)) {
@@ -413,16 +367,7 @@ client.on("interactionCreate", async (interaction) => {
                     delete qbClasses[interaction.user.id];
                 };
                 let message = await interaction.channel!.send({
-                    "embeds": [new EmbedBuilder().setTitle("❓ 배틀코드를 입력해주세요.").setColor("Yellow")],
-                    // "components": [{
-                    //     "type": 1,
-                    //     "components": [{
-                    //         "type": 2,
-                    //         "label": "🗑️ 메세지 지우기",
-                    //         "style": 4,
-                    //         "customId": "_delete_message|" + interaction.user.id + "|q"
-                    //     }]
-                    // }]
+                    "embeds": [new EmbedBuilder().setTitle("❓ 배틀코드를 입력해주세요.").setColor("Yellow")]
                 });
                 var collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
@@ -490,16 +435,7 @@ client.on("interactionCreate", async (interaction) => {
                                         "style": 4,
                                         "customId": "_quiz_battle_answer|wrong"
                                     }]
-                                },
-                                    // {
-                                    //     "type": 1,
-                                    //     "components": [{
-                                    //         "type": 2,
-                                    //         "label": "🗑️ 메세지 지우기",
-                                    //         "style": 4,
-                                    //         "customId": "_delete_message|" + interaction.user.id + "|q"
-                                    //     }]
-                                    // }
+                                }
                                 ]
                             }).catch(() => end = true);
                             await message.awaitMessageComponent({
@@ -530,16 +466,7 @@ client.on("interactionCreate", async (interaction) => {
             } else if (interaction.customId === "_quiz_battle_crasher") {
                 interaction.deferUpdate();
                 let message = await interaction.channel!.send({
-                    "embeds": [new EmbedBuilder().setTitle("❓ 배틀코드를 입력해주세요.").setColor("Yellow")],
-                    // "components": [{
-                    //     "type": 1,
-                    //     "components": [{
-                    //         "type": 2,
-                    //         "label": "🗑️ 메세지 지우기",
-                    //         "style": 4,
-                    //         "customId": "_delete_message|" + interaction.user.id
-                    //     }]
-                    // }]
+                    "embeds": [new EmbedBuilder().setTitle("❓ 배틀코드를 입력해주세요.").setColor("Yellow")]
                 });
                 var collected: Collection<string, Message<boolean>> | false = await channel.awaitMessages({
                     filter: (m) => m.author.id === interaction.user.id,
@@ -585,11 +512,6 @@ client.on("interactionCreate", async (interaction) => {
                     interaction.reply({ embeds: [new EmbedBuilder().setTitle("❌ 잘못된 접근입니다.").setColor("Red")], ephemeral: true });
                     return;
                 };
-                // if (interaction.customId.split("|")[2] === "q" && qbClasses[interaction.user.id]) {
-                //     qbClasses[interaction.user.id].leave();
-                //     qbClasses[interaction.user.id].removeAllListeners();
-                //     delete qbClasses[interaction.user.id];
-                // };
                 interaction.message.delete();
             } else if (interaction.customId === "_update_message") {
                 await updateMessage(interaction.message, interaction.user.id, "edit", true);
@@ -636,13 +558,13 @@ client.on("messageCreate", async (message: Message) => {
         const args = message.content.slice(config.prefix.length).split(" ");
         const cmd = args.shift()!.toLowerCase();
         if (config.owners.includes(message.author.id)) {
-            if (cmd === "setup" && !!message.guild) {
-                if (!!config.ticketCategory && message.guild.channels.cache.has(config.ticketCategory)) {
+            if (cmd === "setup" && message.guild) {
+                if (config.ticketCategory && message.guild.channels.cache.has(config.ticketCategory)) {
                     let category: CategoryChannel = message.guild.channels.cache.get(config.ticketCategory) as CategoryChannel;
                     await Promise.all(category.children.cache.map(async channel => await channel.delete()));
                     await category.delete();
                 };
-                if (!!config.ticketChannel && message.guild.channels.cache.has(config.ticketChannel)) await message.guild.channels.cache.get(config.ticketChannel)?.delete();
+                if (config.ticketChannel && message.guild.channels.cache.has(config.ticketChannel)) await message.guild.channels.cache.get(config.ticketChannel)?.delete();
                 let category = await message.guild.channels.create({ "name": "TICKETS", "type": ChannelType.GuildCategory, "permissionOverwrites": [{ "id": message.guild.roles.everyone.id, "allow": ["ReadMessageHistory"], "deny": ["ViewChannel", "SendMessages", "SendMessagesInThreads", "CreatePublicThreads", "CreatePrivateThreads"] }] });
                 config.ticketCategory = category.id;
                 let channel = await category.children.create({ "name": "사용", "topic": "Created By " + client.user?.username + " | DO NOT DELETE" });
@@ -712,139 +634,36 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
         if (!classes[userID].set.id || !classes[userID].class.id) disableMode = "set";
         if (!users[userID].id || !users[userID].password) disableMode = "idPass";
         let disabled = disableMode === "idPass" || disableMode === "set";
-        let components = [
-            {
-                "type": 1,
-                "components": [
-                    {
-                        "type": 2,
-                        "label": "클래스카드 아이디/비번 설정",
-                        "style": 1,
-                        "customId": "_set_id_pass",
-                        "disabled": false
-                    }
-                ]
-            }
+        const components = [
+            new ActionRowBuilder<ButtonBuilder>()
+                .addComponents(new ButtonBuilder().setLabel("클래스카드 아이디/비번 설정").setStyle(ButtonStyle.Primary).setCustomId("_set_id_pass").setDisabled(false))
         ];
-        if (disableMode !== "idPass") components[0].components.push({
-            "type": 2,
-            "label": "세트 설정",
-            "style": 1,
-            "customId": "_set_set",
-            "disabled": false
-        });
+        if (disableMode !== "idPass") components[0].addComponents(new ButtonBuilder().setLabel("세트 설정").setStyle(ButtonStyle.Primary).setCustomId("_set_set").setDisabled(false));
         if (!disabled) {
-            let row = {
-                "type": 1,
-                "components": [
-                    {
-                        "type": 2,
-                        "label": "암기학습",
-                        "style": 3,
-                        "customId": "s_memorize",
-                        "disabled": false
-                    },
-                    {
-                        "type": 2,
-                        "label": "리콜학습",
-                        "style": 3,
-                        "customId": "s_recall",
-                        "disabled": false
-                    },
-                    {
-                        "type": 2,
-                        "label": "스펠학습",
-                        "style": 3,
-                        "customId": "s_spell",
-                        "disabled": false
-                    },
-                    {
-                        "type": 2,
-                        "label": "테스트",
-                        "style": 3,
-                        "customId": "s_test",
-                        "disabled": !classes[userID].class.id
-                    }
-                ]
-            };
-            if (!classes[userID].class.id) row.components.pop();
-            if (classes[userID].set.type !== SetType["word"] && classes[userID].set.type !== SetType["sentence"]) for (let i = 0; i < 3; i++) row.components.shift();
-            if (row.components.length > 0) components.push(row);
-        };
-        components.push({
-            "type": 1,
-            "components": [
-                {
-                    "type": 2,
-                    "label": "퀴즈배틀",
-                    "style": 3,
-                    "customId": "_quiz_battle",
-                    "disabled": false
-                },
-                {
-                    "type": 2,
-                    "label": "퀴즈배틀 크래셔",
-                    "style": 3,
-                    "customId": "_quiz_battle_crasher",
-                    "disabled": false
-                }
-            ]
-        });
-        if (!disabled && (classes[userID].set.type === SetType["word"] || classes[userID].set.type === SetType["sentence"])) {
-            components.at(-1)!.components.unshift({
-                "type": 2,
-                "label": "매칭/스크램블 게임",
-                "style": 3,
-                "customId": "s_match_scramble",
-                "disabled": disabled
-            },
-                // {
-                //     "type": 2,
-                //     "label": "크래시 게임",
-                //     "style": 3,
-                //     "customId": "s_crash",
-                //     "disabled": disabled
-                // }
+            const row = new ActionRowBuilder<ButtonBuilder>();
+            if (classes[userID].set.type === SetType["word"] || classes[userID].set.type === SetType["sentence"]) row.addComponents(
+                new ButtonBuilder().setLabel("암기학습").setStyle(ButtonStyle.Success).setCustomId("s_memorize").setDisabled(false),
+                new ButtonBuilder().setLabel("리콜학습").setStyle(ButtonStyle.Success).setCustomId("s_recall").setDisabled(false),
+                new ButtonBuilder().setLabel("스펠학습").setStyle(ButtonStyle.Success).setCustomId("s_spell").setDisabled(false)
             );
+            row.addComponents(new ButtonBuilder().setLabel("테스트").setStyle(ButtonStyle.Success).setCustomId("s_test").setDisabled(false));
+            components.push(row);
         };
-        if (disableMode !== "idPass") components.push({
-            "type": 1,
-            "components": [
-                {
-                    "type": 2,
-                    "label": "세트 목록 가져오기",
-                    "style": 3,
-                    "customId": "get_sets",
-                    "disabled": false
-                },
-                {
-                    "type": 2,
-                    "label": "정보 업데이트",
-                    "style": 3,
-                    "customId": "_update_message",
-                    "disabled": false
-                }
-            ]
-        });
-        components.push({
-            "type": 1,
-            "components": [
-                {
-                    "type": 2,
-                    "label": "채널 삭제하기",
-                    "style": 4,
-                    "customId": "delete_channel",
-                    "disabled": false
-                },
-                {
-                    "type": 2,
-                    "label": "정보 삭제하기",
-                    "style": 4,
-                    "customId": "delete_info",
-                    "disabled": disableMode === "idPass"
-                }
-            ]
-        });
+        components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setLabel("퀴즈배틀").setStyle(ButtonStyle.Success).setCustomId("_quiz_battle").setDisabled(false),
+            new ButtonBuilder().setLabel("퀴즈배틀 크래셔").setStyle(ButtonStyle.Success).setCustomId("_quiz_battle_crasher").setDisabled(false)
+        ));
+        if (!disabled && (classes[userID].set.type === SetType["word"] || classes[userID].set.type === SetType["sentence"])) {
+            components.at(-1)!.addComponents(new ButtonBuilder().setLabel("매칭/스크램블 게임").setStyle(ButtonStyle.Success).setCustomId("s_match_scramble").setDisabled(false));
+        };
+        if (disableMode !== "idPass") components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setLabel("세트 목록 가져오기").setStyle(ButtonStyle.Success).setCustomId("get_sets").setDisabled(false),
+            new ButtonBuilder().setLabel("정보 업데이트").setStyle(ButtonStyle.Success).setCustomId("_update_message").setDisabled(false)
+        ));
+        components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setLabel("채널 삭제하기").setStyle(ButtonStyle.Danger).setCustomId("delete_channel").setDisabled(false),
+            new ButtonBuilder().setLabel("정보 삭제하기").setStyle(ButtonStyle.Danger).setCustomId("delete_info").setDisabled(disableMode === "idPass")
+        ));
         var embeds: EmbedBuilder[] = [];
         var embed = new EmbedBuilder().setColor(!disableMode ? "Green" : "Yellow");
         if (disableMode === "idPass") embed.setTitle("아이디/비번을 설정해주세요.");
@@ -858,8 +677,8 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
                     users[userID].classID = 0;
                     fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
                     classes[userID] = new ClassCard();
-                    updateMessage(message, userID, s, false);
-                    throw new Error("invalid id or password.");
+                    updateMessage(message, userID, s);
+                    return;
                 };
             });
             embed.setTitle("계정 정보").addFields([{

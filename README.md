@@ -18,8 +18,8 @@
 
 ## 📄 사용법
 **아래 스텝 진행 전 [discord.dev](https://discord.dev)에서 봇을 만들고 intent를 다 킨 후 토큰을 발급받고 진행하셔야 합니다.**<br>
-1. `yarn`(yarn == npm모듈)을 실행합니다.
-2. `yarn start`를 실행 후 생성된 config.json 파일을 수정합니다. (디스코드 봇 토큰, 디스코드 봇 소유자 id, 서버 id)
+1. `npm i`를 실행합니다.
+2. `npm start`를 실행 후 생성된 config.json 파일을 수정합니다. (디스코드 봇 토큰, 디스코드 봇 소유자 id, 서버 id)
 3. `node index.js`를 실행합니다.
 4. 봇을 디스코드 서버에 초대합니다.
 5. 디스코드 서버에서 `!setup`을 전송합니다.
