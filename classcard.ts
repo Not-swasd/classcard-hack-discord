@@ -199,7 +199,7 @@ export default class ClassCard {
     private _user: User;
     private last_ts: string;
     constructor() {
-        this.client = axios.create({ headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20A392 [FBAN/FBIOS;FBDV/iPhone15,3;FBMD/iPhone;FBSN/iOS;FBSV/16.0.3;FBSS/3;FBID/phone;FBLC/es_LA;FBOP/5] ClassCard/1.0.348 u_idx:0" } });
+        this.client = axios.create({ headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/20A392 [FBAN/FBIOS;FBDV/iPhone15,3;FBMD/iPhone;FBSN/iOS;FBSV/16.0.3;FBSS/3;FBID/phone;FBLC/es_LA;FBOP/5] ClassCard/1.0.350 u_idx:0" } });
         this.client.interceptors.response.use((response) => {
             if (response.data?.result?.s_ts && response.data.result.s_ts.length) this.last_ts = response.data.result.s_ts;
             return response;
