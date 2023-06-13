@@ -9,15 +9,7 @@ if (!fs.existsSync("./config.json")) {
     process.exit(0);
 };
 if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
-let config: {
-    token: string,
-    owners: string[],
-    prefix: string,
-    guild: string,
-    ticketCategory: string,
-    ticketChannel: string,
-    secret?: string
-} = JSON.parse(fs.readFileSync("./config.json", "utf8"));
+import config from "./config.json" assert { type: "json" };
 let secret: string = config.secret && config.secret.length === 32 ? config.secret : randPassword(32);
 let users: {
     [key: string]: {
@@ -32,7 +24,6 @@ let users: {
 
 let classes: { [id: string]: ClassCard } = {};
 let qbClasses: { [id: string]: QuizBattle } = {};
-
 const client: Client = new Client({
     "intents": [
         "DirectMessageReactions",
