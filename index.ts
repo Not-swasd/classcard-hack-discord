@@ -1,17 +1,21 @@
 import { CategoryChannel, Client, Collection, Message, TextChannel, EmbedBuilder, Partials, ComponentType, ChannelType, ModalBuilder, ActionRowBuilder, TextInputStyle, ModalActionRowComponentBuilder, TextInputBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ActivityType } from "discord.js";
 import { Activity, ClassCard, QuizBattle, SetType, BattleQuest } from "./classcard.js";
-import * as fs from "fs";
-import * as crypto from "crypto";
+import fs from "fs";
+import crypto from "crypto";
+import path from "path";
 
-if (!fs.existsSync("./config.json")) {
-    fs.writeFileSync("./config.json", JSON.stringify({ token: "디스코드 봇 토큰", owners: ["디스코드 봇 소유자 아이디"], prefix: "!", guild: "", ticketCategory: "", ticketChannel: "" }, null, 4));
+const getConfigPath = (file: string) => path.join(path.dirname(import.meta.url), file).replace("file:", "").replace(/^\\/g, "");
+
+if (!fs.existsSync(getConfigPath("config.json"))) {
+    fs.writeFileSync(getConfigPath("config.json"), JSON.stringify({ token: "디스코드 봇 토큰", owners: ["디스코드 봇 소유자 아이디"], prefix: "!", guild: "", ticketCategory: "", ticketChannel: "" }, null, 4));
     console.info("config.json를 수정해주세요.");
     process.exit(0);
 };
-if (!fs.existsSync("./users.json")) fs.writeFileSync("./users.json", "{}");
+if (!fs.existsSync(getConfigPath("users.json"))) fs.writeFileSync(getConfigPath("users.json"), "{}");
 import config from "./config.json" assert { type: "json" };
+import _users from "./users.json" assert { type: "json" };
 let secret: string = config.secret && config.secret.length === 32 ? config.secret : randPassword(32);
-let users: {
+const users: {
     [key: string]: {
         id: string,
         password: string,
@@ -20,10 +24,11 @@ let users: {
         setID: number,
         classID: number,
     }
-} = JSON.parse(fs.readFileSync("./users.json", "utf8"));
+} = _users;
 
 let classes: { [id: string]: ClassCard } = {};
 let qbClasses: { [id: string]: QuizBattle } = {};
+
 const client: Client = new Client({
     "intents": [
         "DirectMessageReactions",
@@ -75,7 +80,7 @@ await Promise.all(Object.keys(users).map(async id => {
         };
         if (users[id].classID && !(await classes[id].setClass(users[id].classID).then(res => res?.success))) users[id].classID = 0;
         if (users[id].setID && !(await classes[id].setSet(users[id].setID).then(res => res?.success))) users[id].setID = 0;
-        saveUsers();
+        saveData();
     } catch { };
 }));
 console.clear();
@@ -98,7 +103,7 @@ client.on("ready", () => {
             channel.delete();
             users[id].channelID = "";
             users[id].messageID = "";
-            saveUsers();
+            saveData();
             return;
         };
         updateMessage(message, id, "edit");
@@ -108,7 +113,7 @@ client.on("ready", () => {
 client.on("interactionCreate", async (interaction) => {
     try {
         if (!users[interaction.user.id]) users[interaction.user.id] = { id: "", password: "", channelID: "", messageID: "", setID: 0, classID: 0 };
-        saveUsers();
+        saveData();
         const user = users[interaction.user.id];
         if (interaction.isButton()) {
             const channel = interaction.channel as TextChannel;
@@ -125,11 +130,11 @@ client.on("interactionCreate", async (interaction) => {
                 else {
                     users[interaction.user.id].messageID = "";
                     users[interaction.user.id].channelID = "";
-                    saveUsers();
+                    saveData();
                     if (channel) channel.delete();
                     return;
                 };
-                saveUsers();
+                saveData();
                 await channel.permissionOverwrites.create(interaction.user, { "ViewChannel": true, "SendMessages": true });
                 interaction.editReply({ "embeds": [new EmbedBuilder().setTitle("✅ Success").setDescription(`설정이 완료되었습니다. 채널: <#${channel.id}>`).setColor("Green")] });
                 return;
@@ -155,7 +160,7 @@ client.on("interactionCreate", async (interaction) => {
                     await channel.delete();
                     users[interaction.user.id].channelID = "";
                     users[interaction.user.id].messageID = "";
-                    saveUsers();
+                    saveData();
                     return true;
                 }).catch(() => false);
                 if (!i) interaction.editReply({
@@ -179,7 +184,7 @@ client.on("interactionCreate", async (interaction) => {
                     users[interaction.user.id].classID = 0;
                     delete classes[interaction.user.id];
                     classes[interaction.user.id] = new ClassCard();
-                    saveUsers();
+                    saveData();
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     return true;
                 }).catch(() => false);
@@ -276,7 +281,7 @@ client.on("interactionCreate", async (interaction) => {
                     return;
                 };
                 users[interaction.user.id].classID = classId;
-                saveUsers();
+                saveData();
                 updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                 let sets = setsResult.data;
                 var description = sets.length < 1 ? `이 클래스에 세트가 하나도 없습니다.` : "\`세트 이름\` [세트 아이디]\n\n" + sets.map(s => `\`${s.name}\` [${s.id}]`).join("\n");
@@ -519,7 +524,7 @@ client.on("interactionCreate", async (interaction) => {
                     users[interaction.user.id].password = encrypt(password);
                     users[interaction.user.id].setID = 0;
                     users[interaction.user.id].classID = 0;
-                    saveUsers()
+                    saveData()
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     interaction.reply({ embeds: [new EmbedBuilder().setTitle("✅ 로그인 성공. 아이디와 비밀번호가 저장되었습니다.").setColor("Green")], ephemeral: true });
                 } else {
@@ -530,7 +535,7 @@ client.on("interactionCreate", async (interaction) => {
                 let result = await classes[interaction.user.id].setSet(setID);
                 if (result?.success) {
                     users[interaction.user.id].setID = setID;
-                    saveUsers();
+                    saveData();
                     updateMessage(interaction.channel?.messages.cache.get(user.messageID), interaction.user.id, "edit");
                     let embed = new EmbedBuilder().setTitle("✅ 세트가 설정되었습니다.").setDescription("자세한 내용은 위 두번째 임베드를 봐주세요.").setColor("Green");
                     await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -562,7 +567,7 @@ client.on("messageCreate", async (message: Message) => {
                 await channel.permissionOverwrites.edit(message.guild!.roles.everyone, { "ViewChannel": true });
                 config.ticketChannel = channel.id;
                 config.guild = message.guild.id;
-                fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
+                saveData();
                 await channel.send({
                     "embeds": [new EmbedBuilder().setTitle("버튼을 눌러주세요.").setColor("Green")],
                     "components": [{
@@ -666,7 +671,7 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
                     users[userID].password = "";
                     users[userID].setID = 0;
                     users[userID].classID = 0;
-                    fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+                    saveData();
                     classes[userID] = new ClassCard();
                     updateMessage(message, userID, s);
                     return;
@@ -738,8 +743,9 @@ async function updateMessage(message: any, userID: string, s: "send" | "edit", r
 //     return new Promise(resolve => setTimeout(resolve, ms));
 // };
 
-function saveUsers(): void {
-    fs.writeFileSync("./users.json", JSON.stringify(users, null, 4));
+function saveData(): void {
+    fs.writeFileSync(getConfigPath("users.json"), JSON.stringify(users, null, 4));
+    fs.writeFileSync(getConfigPath("config.json"), JSON.stringify(config, null, 4));
 };
 
 //ExpressVPN security tools -> Password Generator URL: https://www.expressvpn.com/password-generator

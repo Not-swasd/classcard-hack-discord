@@ -3,7 +3,10 @@ import Websocket from "ws";
 import EventEmitter from "events";
 import { URLSearchParams } from "url";
 import qs from "querystring";
+// import path from "path";
 // import fs from "fs";
+
+// const getConfigPath = (file: string) => path.join(path.dirname(import.meta.url), file).replace("file:", "").replace(/^\\/g, "");
 
 type Folder = {
     "id": number,
@@ -571,7 +574,7 @@ export default class ClassCard {
             for (var t of (["Memorize", "Recall", "Spell"] as ("Memorize" | "Recall" | "Spell")[])) {
                 data[t] += repeat.filter(c => c.activity === String(Activity[t])).map(c => Number(c.score)).reduce((partialSum, a) => partialSum + a, 0) * 100;
             };
-            // fs.writeFileSync("./sync_card__d_X.json", JSON.stringify(sync_card.filter(c => c.deleted === "0"), null, 4));
+            // fs.writeFileSync(getConfigPath("sync_card__d_X.json"), JSON.stringify(sync_card.filter(c => c.deleted === "0"), null, 4));
             return {
                 success: true,
                 message: "성공",
