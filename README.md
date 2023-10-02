@@ -1,6 +1,6 @@
 # 📗 Classcard Hack
 언어: [![Language](https://shields.io/badge/TypeScript-3178C6?logo=TypeScript&logoColor=FFF&style=flat-square)](https://www.typescriptlang.org/)<br>
-**:warning: 악용금지! 학습 목적으로만 사용해주세요.**   
+**:warning: 악용금지! 학습 목적으로만 사용해주세요.**
 
 ## 📙 설명
 * 클래스카드 자동화
@@ -28,4 +28,7 @@
 ## 📸 사진
 ![SS](./images/Screenshot_2022-08-06_191853.png)
 
-[^w]: 브라우저를 사용하는 핵들은 대부분 자바스크립트를 쓰는데 오류가 난다면 클래스카드에 오류 내용을 자동 전송하고 선생님께 알림이 갈 수도 있기 때문.
+---
+여담으로 이 프로젝트는 내 첫 타입스크립트 프로젝트이다.
+
+[^w]: 브라우저를 사용하는 핵들은 자바스크립트를 쓰는데 스크립트 실행 중 오류가 난다면 자기네 서버에 오류 내용을 모두 전송하는 요상한 코드가 있기 때문이다.
