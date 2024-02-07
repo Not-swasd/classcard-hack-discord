@@ -1,3 +1,6 @@
+# 이 프로젝트는 더 이상 유지 보수되지 않습니다.
+클래스카드 API v2가 배포됨에 따라 이 프로그램은 정상 작동되지 않습니다. 패치할 시간이 없어, 이 리포지토리를 보관처리합니다. 
+
 # 📗 Classcard Hack
 언어: [![Language](https://shields.io/badge/TypeScript-3178C6?logo=TypeScript&logoColor=FFF&style=flat-square)](https://www.typescriptlang.org/)<br>
 **:warning: 악용금지! 학습 목적으로만 사용해주세요.**
